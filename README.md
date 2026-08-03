@@ -17,9 +17,20 @@ Requires Docker with Compose v2. Everything else runs in containers.
 
 ```bash
 cp .env.example .env
-# Set a real POSTGRES_PASSWORD — e.g. openssl rand -base64 32
+
+# Both values ship as placeholders and are rejected at startup on purpose.
+# Generate real ones:
+openssl rand -base64 32   # → POSTGRES_PASSWORD
+openssl rand -base64 32   # → VAULT_MASTER_KEY
+
 docker compose up --build
 ```
+
+`VAULT_MASTER_KEY` encrypts every stored provider credential. **Back it up somewhere
+other than your database backup.** Lose it and every stored credential is unrecoverable;
+leak it alongside a database dump and every stored credential is compromised. If you
+start the instance with the wrong key it refuses to boot rather than showing you an empty
+vault — see [`SECURITY.md`](SECURITY.md).
 
 - Web UI → http://localhost:3000
 - API liveness → http://localhost:3001/health
