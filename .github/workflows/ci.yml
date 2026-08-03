@@ -125,5 +125,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # compose.yaml requires both of these to interpolate, deliberately — an operator
+      # must not be able to start an instance without them. This job only builds images,
+      # so the values are throwaway and generated here rather than written into the repo.
       - name: Build images
-        run: POSTGRES_PASSWORD=ci-only-not-a-real-secret docker compose build
+        run: |
+          set -euo pipefail
+          POSTGRES_PASSWORD=ci-only-not-a-real-secret \
+          VAULT_MASTER_KEY="$(openssl rand -base64 32)" \
+            docker compose build
