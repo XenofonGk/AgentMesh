@@ -17,12 +17,26 @@ import path from 'node:path';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..');
 
+/**
+ * Two scans, because they cover different things and the working-tree one is the case
+ * this hook actually exists for:
+ *
+ *   --no-git   files as they sit on disk, including everything still uncommitted. A
+ *              secret written during a session is uncommitted almost by definition.
+ *   (default)  commit history, catching a secret committed earlier in the session.
+ *
+ * `detect` alone scans only history — it does not look at the working tree at all, so
+ * the obvious-looking single command would have let a freshly written key through.
+ */
+const SCANS = [
+  ['detect', '--no-git', '--no-banner', '--redact', '--source', REPO_ROOT],
+  ['detect', '--no-banner', '--redact', '--source', REPO_ROOT],
+];
+
 try {
-  execFileSync('gitleaks', ['detect', '--no-banner', '--redact', '--source', REPO_ROOT], {
-    stdio: 'pipe',
-    encoding: 'utf8',
-    timeout: 120_000,
-  });
+  for (const args of SCANS) {
+    execFileSync('gitleaks', args, { stdio: 'pipe', encoding: 'utf8', timeout: 120_000 });
+  }
 } catch (error) {
   if (error.code === 'ENOENT') {
     process.stderr.write(
