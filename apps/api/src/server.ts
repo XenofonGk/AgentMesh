@@ -1,8 +1,10 @@
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
 import { redact } from '@agentmesh/core';
 import { createDatabase, type DatabaseHandle } from '@agentmesh/db';
 import type { Config } from './config.js';
+import { registerAuthRoutes } from './auth/routes.js';
 
 export interface BuildOptions {
   config: Config;
@@ -37,6 +39,12 @@ export async function buildServer({ config, database }: BuildOptions): Promise<A
   });
 
   await server.register(cors, { origin: config.WEB_ORIGIN, credentials: true });
+  // No `secret` option: this project signs nothing into the cookie value. The cookie
+  // carries an opaque session token; the token is what's validated against the
+  // `sessions` table, so a forged-but-unsigned cookie fails at that lookup regardless.
+  await server.register(cookie);
+
+  await registerAuthRoutes(server, db.db, config.NODE_ENV);
 
   /** Liveness: is the process up? Never touches the database. */
   server.get('/health', () => ({ status: 'ok' as const }));

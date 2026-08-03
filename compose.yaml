@@ -43,6 +43,10 @@ services:
       # start on the wrong one rather than presenting an empty vault.
       VAULT_MASTER_KEY: '${VAULT_MASTER_KEY:?VAULT_MASTER_KEY is required — generate one with openssl rand -base64 32}'
       VAULT_MASTER_KEY_VERSION: ${VAULT_MASTER_KEY_VERSION:-1}
+      # Required. Phase 1 has no signup flow, so this is the only way to get a working
+      # login — seeded once on first boot, a no-op on every boot after.
+      ADMIN_EMAIL: '${ADMIN_EMAIL:?ADMIN_EMAIL is required — see .env.example}'
+      ADMIN_PASSWORD: '${ADMIN_PASSWORD:?ADMIN_PASSWORD is required — generate one with openssl rand -base64 18}'
     ports:
       - '127.0.0.1:${API_PORT:-3001}:3001'
     healthcheck:
