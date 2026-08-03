@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+.git
+.github
+**/dist
+**/.next
+**/coverage
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+docs
+*.md

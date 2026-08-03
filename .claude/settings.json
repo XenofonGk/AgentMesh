@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "gitleaks detect --no-banner --redact || echo 'SECRET DETECTED — do not commit'"
+            "command": "node scripts/hooks/gitleaks-stop.js"
           }
         ]
       }

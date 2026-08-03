@@ -256,6 +256,25 @@ Build the security core *before* anything fun, so nothing is retrofitted.
 - Auth (start with a single-tenant admin session; add OAuth later)
 - Vault: encrypt/decrypt, rotate, delete
 - Credential proxy with header injection + redaction
+
+**Master key handling — decided, do not re-litigate:**
+- Source is `VAULT_MASTER_KEY`, or `VAULT_MASTER_KEY_FILE` pointing at a file (the
+  convention the Postgres image uses, so Docker/Podman secrets work). **No KMS** — a cloud
+  dependency contradicts the point of a tool you run yourself.
+- Fail fast at startup, and validate properly: base64-decode, assert exactly 32 bytes, and
+  **reject the literal placeholder from `.env.example`** — people copy it and never change
+  it, so that rejection is hardcoded. The error names the variable and the fix
+  (`openssl rand -base64 32`) and echoes no part of the value.
+
+**Two schema decisions that must land in Phase 1 or never:**
+- **`key_version` on the vault table from the first migration.** Envelope encryption means
+  rotating the master key re-wraps DEKs rather than re-encrypting every row — but only if
+  you can tell which version wrapped what. Retrofitting this is a migration over live
+  ciphertext.
+- **An encrypted canary, written at init and decrypted on boot.** It distinguishes "key
+  missing" from "key is wrong". A wrong key must refuse to start — never present an empty
+  vault and invite the user to re-enter credentials over ciphertext they can no longer
+  read.
 - **Done when:** the five invariants in §4 each have a passing test, including a deliberate
   "hostile agent dumps its env" test that proves nothing leaks
 

@@ -1,0 +1,77 @@
+name: agentmesh
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agentmesh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env}
+      POSTGRES_DB: ${POSTGRES_DB:-agentmesh}
+    # Loopback only. Postgres holds the credential vault; it must not be reachable
+    # from the network just because someone ran `compose up` on a VPS.
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${POSTGRES_USER:-agentmesh} -d ${POSTGRES_DB:-agentmesh}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/api.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 3001
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      DATABASE_URL: postgres://${POSTGRES_USER:-agentmesh}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agentmesh}
+      # Required. The API refuses to start without a valid 32-byte key, and refuses to
+      # start on the wrong one rather than presenting an empty vault.
+      VAULT_MASTER_KEY: '${VAULT_MASTER_KEY:?VAULT_MASTER_KEY is required — generate one with openssl rand -base64 32}'
+      VAULT_MASTER_KEY_VERSION: ${VAULT_MASTER_KEY_VERSION:-1}
+    ports:
+      - '127.0.0.1:${API_PORT:-3001}:3001'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+    ports:
+      - '127.0.0.1:${WEB_PORT:-3000}:3000'
+
+volumes:
+  db-data:

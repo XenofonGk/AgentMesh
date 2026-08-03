@@ -1,0 +1,40 @@
+title = "AgentMesh gitleaks config"
+
+[extend]
+useDefault = true
+
+# Generated and vendored trees. These are gitignored, so the history scan never sees
+# them — but the working-tree scan (`--no-git`, used by the Stop hook) walks the disk and
+# would otherwise report Next.js's per-build preview keys on every clean run. A scanner
+# that cries wolf on a clean tree is one people learn to ignore.
+[[allowlists]]
+description = "Build output and dependencies"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)\.next/''',
+  '''(^|/)\.pnpm-store/''',
+  '''(^|/)dist/''',
+  '''(^|/)coverage/''',
+  '''\.tsbuildinfo$''',
+  '''(^|/)pnpm-lock\.yaml$''',
+]
+
+# Documentation and the example env file describe credentials; they do not contain any.
+# Scoped to these exact files rather than a blanket rule.
+[[allowlists]]
+description = "Placeholder values in documentation and example env files"
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)SECURITY\.md$''',
+  '''(^|/)README\.md$''',
+]
+
+# NOTE: there is deliberately no allowlist for test files.
+#
+# An earlier version allowlisted `*.test.ts` on the assumption that the synthetic
+# fixtures ('sk-ant-fake-value-for-tests') would trip the default rules. They do not —
+# they are too obviously fake to match. The allowlist bought nothing and cost a real
+# blind spot: a genuine key pasted into any test file would have been invisible to both
+# the scanner and the Stop hook. Verified by scanning with and without it.
+#
+# If a fixture ever does trip a rule, allowlist that one regex, never the path.

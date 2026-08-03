@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Fork PRs get a read-only token and no secrets (PLAN.md §5, Phase 6).
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck · lint · test
+    runs-on: ubuntu-latest
+
+    # The schema tests run against a real Postgres. Constraint behaviour is the thing
+    # being asserted, so a fake would test nothing.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: ci-only-not-a-real-secret
+          POSTGRES_DB: agentmesh_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      TEST_DATABASE_URL: postgres://postgres:ci-only-not-a-real-secret@127.0.0.1:5433/agentmesh_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Test
+        run: pnpm test
+
+  secrets:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the scan covers every commit on the branch, not just the tip.
+          fetch-depth: 0
+
+      # Blocking, deliberately: gitleaks has near-zero false positives, and a miss is
+      # unrecoverable — a leaked key is public the moment it is pushed.
+      #
+      # Run as a pinned binary rather than gitleaks-action. On pull_request events that
+      # action calls the PR-commits API and needs `pull-requests: read`, so a secret scan
+      # fails for token-permission reasons rather than for secrets — and it breaks
+      # outright on fork PRs, which get a restricted token and are the PRs most worth
+      # scanning. The binary needs no token at all.
+      #
+      # Checksum-verified: an unpinned download would let a compromised release replace
+      # the very tool meant to catch leaked credentials.
+      - name: Run gitleaks
+        env:
+          GITLEAKS_VERSION: 8.28.0
+          GITLEAKS_SHA256: a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb
+        run: |
+          set -euo pipefail
+          curl -sSLf -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar xzf gitleaks.tar.gz gitleaks
+          # Scans commit history (fetch-depth: 0 above), which is what a push exposes.
+          # --redact so a finding never prints the secret into the build log.
+          ./gitleaks detect --source . --config .gitleaks.toml --no-banner --redact --verbose
+          rm -f gitleaks gitleaks.tar.gz
+
+  audit:
+    name: pnpm audit (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Advisory, not blocking. A gate that fails on unfixable transitive advisories
+      # teaches contributors to bypass CI, and that habit costs more on a
+      # security-sensitive project than the advisories themselves. The weekly run
+      # (audit-weekly.yml) is what actually surfaces these, as a tracked issue.
+      - name: Audit dependencies
+        continue-on-error: true
+        run: pnpm audit --audit-level high
+
+  compose:
+    name: docker compose build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # compose.yaml requires both of these to interpolate, deliberately — an operator
+      # must not be able to start an instance without them. This job only builds images,
+      # so the values are throwaway and generated here rather than written into the repo.
+      - name: Build images
+        run: |
+          set -euo pipefail
+          POSTGRES_PASSWORD=ci-only-not-a-real-secret \
+          VAULT_MASTER_KEY="$(openssl rand -base64 32)" \
+            docker compose build
