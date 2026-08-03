@@ -5,10 +5,10 @@ model providers — where every user brings their own credentials.
 
 AgentMesh is **software you run**, not a service you sign up for. There is no hosted tier.
 Your provider keys never leave your instance, and the agent process never sees them at all
-(see [`agentmesh/SECURITY.md`](agentmesh/SECURITY.md)).
+(see [`SECURITY.md`](SECURITY.md)).
 
 > **Status: Phase 0 — foundations.** The monorepo, toolchain, and Compose stack are in
-> place; the app itself is intentionally empty. See [`agentmesh/PLAN.md`](agentmesh/PLAN.md)
+> place; the app itself is intentionally empty. See [`PLAN.md`](PLAN.md)
 > for what each phase delivers.
 
 ## Quickstart
@@ -16,7 +16,6 @@ Your provider keys never leave your instance, and the agent process never sees t
 Requires Docker with Compose v2. Everything else runs in containers.
 
 ```bash
-cd agentmesh
 cp .env.example .env
 # Set a real POSTGRES_PASSWORD — e.g. openssl rand -base64 32
 docker compose up --build
@@ -34,7 +33,6 @@ the supported threat model — read `SECURITY.md` first.
 Requires Node 22 and pnpm 10.
 
 ```bash
-cd agentmesh
 pnpm install
 pnpm typecheck   # tsc across every workspace package
 pnpm lint        # eslint
@@ -45,17 +43,17 @@ pnpm build       # packages, then apps
 ## Layout
 
 ```
-agentmesh/
-  apps/web          Next.js UI
-  apps/api          Fastify API + SSE
-  apps/proxy        credential-injecting egress proxy
-  packages/core     domain types, run state machine, event schema
-  packages/db       Drizzle schema + migrations
-  packages/adapters provider adapters (claude | gemini | deepseek | grok | ollama)
-  packages/skills   skill loader, validator, eval harness
-  infra/            Dockerfiles
+apps/web          Next.js UI
+apps/api          Fastify API + SSE
+apps/proxy        credential-injecting egress proxy
+packages/core     domain types, run state machine, event schema
+packages/db       Drizzle schema + migrations
+packages/adapters provider adapters (claude | gemini | deepseek | grok | ollama)
+packages/skills   skill loader, validator, eval harness
+infra/            Dockerfiles
+scripts/hooks/    Claude Code hooks that enforce the security guardrails
 ```
 
 ## License
 
-MIT — see [`agentmesh/LICENSE`](agentmesh/LICENSE).
+MIT — see [`LICENSE`](LICENSE).

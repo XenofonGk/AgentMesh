@@ -16,6 +16,13 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Plain Node scripts (hooks, tooling) — no TS project, but they do run on Node.
+    files: ['scripts/**/*.js', '*.config.{js,mjs}'],
+    languageOptions: {
+      globals: { process: 'readonly', Buffer: 'readonly', console: 'readonly' },
+    },
+  },
+  {
     rules: {
       // `any` is allowed only with a written justification (CLAUDE.md conventions),
       // so it warns rather than errors — the review gate is the comment, not the linter.

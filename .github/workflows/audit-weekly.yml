@@ -1,0 +1,63 @@
+name: Weekly dependency audit
+
+# The blocking half of the audit story. PRs get an advisory run (ci.yml); this one runs
+# on a schedule, off the critical path, and files a tracked issue when it finds
+# something — so advisories get triaged rather than dismissed as CI noise.
+on:
+  schedule:
+    - cron: '0 7 * * 1' # Mondays, 07:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    name: pnpm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        id: audit
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          pnpm audit --audit-level high 2>&1 | tee audit.txt
+
+      - name: File an issue when advisories are found
+        if: steps.audit.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Dependency audit: high-severity advisories ($(date -u +%Y-%m-%d))"
+          # The label may not exist yet on a fresh clone of the repo.
+          gh label create security --color d93f0b --description "Security issues and advisories" 2>/dev/null || true
+          existing=$(gh issue list --state open --label security --search "Dependency audit" --json number --jq '.[0].number // empty')
+          {
+            echo "\`pnpm audit --audit-level high\` reported advisories on the weekly run."
+            echo
+            echo "Run: $RUN_URL"
+            echo
+            echo '```'
+            # Truncated to keep the issue readable; the run log has the full output.
+            head -c 8000 audit.txt
+            echo
+            echo '```'
+          } > body.md
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file body.md
+          else
+            gh issue create --title "$title" --body-file body.md --label security
+          fi
