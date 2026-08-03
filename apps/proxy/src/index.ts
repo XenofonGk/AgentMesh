@@ -14,3 +14,6 @@ export const PROXY_BIND_HOST = '127.0.0.1' as const;
 
 /** Default port. Configurable — unlike the host. */
 export const PROXY_DEFAULT_PORT = 3002 as const;
+
+export { RunTokenRegistry } from './run-token.js';
+export type { IssuedToken, RunGrant } from './run-token.js';

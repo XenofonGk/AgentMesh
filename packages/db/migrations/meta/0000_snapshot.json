@@ -1,5 +1,5 @@
 {
-  "id": "ece7c465-1c71-47fa-835d-7d151cfe1722",
+  "id": "bb8f49b5-0121-469f-a146-5f2225c6155e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -459,12 +459,11 @@
       "name": "vault_canary",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
+        "master_key_version": {
+          "name": "master_key_version",
           "type": "integer",
           "primaryKey": true,
-          "notNull": true,
-          "default": 1
+          "notNull": true
         },
         "ciphertext": {
           "name": "ciphertext",
@@ -484,19 +483,18 @@
           "primaryKey": false,
           "notNull": true
         },
-        "master_key_version": {
-          "name": "master_key_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "retired_at": {
+          "name": "retired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -504,12 +502,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "vault_canary_single_row": {
-          "name": "vault_canary_single_row",
-          "value": "\"vault_canary\".\"id\" = 1"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

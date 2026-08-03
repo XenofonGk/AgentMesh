@@ -49,13 +49,12 @@ CREATE TABLE "users" (
 );
 --> statement-breakpoint
 CREATE TABLE "vault_canary" (
-	"id" integer PRIMARY KEY DEFAULT 1 NOT NULL,
+	"master_key_version" integer PRIMARY KEY NOT NULL,
 	"ciphertext" "bytea" NOT NULL,
 	"iv" "bytea" NOT NULL,
 	"tag" "bytea" NOT NULL,
-	"master_key_version" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "vault_canary_single_row" CHECK ("vault_canary"."id" = 1)
+	"retired_at" timestamp with time zone
 );
 --> statement-breakpoint
 ALTER TABLE "auth_identities" ADD CONSTRAINT "auth_identities_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

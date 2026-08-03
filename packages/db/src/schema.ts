@@ -16,7 +16,6 @@
  */
 import { sql } from 'drizzle-orm';
 import {
-  check,
   customType,
   index,
   integer,
@@ -194,7 +193,8 @@ export const credentials = pgTable(
 );
 
 /**
- * A single encrypted canary row, written at vault init and decrypted on every boot.
+ * One encrypted canary **per master key version**, written when that version is first
+ * used and decrypted on boot.
  *
  * This is what distinguishes "no master key configured" from "the wrong master key".
  * Without it, booting with a wrong key looks exactly like booting with an empty vault —
@@ -202,24 +202,18 @@ export const credentials = pgTable(
  * on top of ciphertext they can no longer read. The canary makes that failure loud:
  * a wrong key refuses to start.
  *
- * `master_key_version` here is the authority on which key generation the instance is
- * currently running, so a partially-completed rotation is detectable on boot.
+ * Keyed by version rather than being a single row, because during a rotation v1 and v2
+ * legitimately coexist: DEKs are re-wrapped one at a time, and until the last one moves,
+ * both keys must validate. A single-row canary would make boot validation fail in the
+ * middle of exactly the operation it is meant to protect.
  */
-export const vaultCanary = pgTable(
-  'vault_canary',
-  {
-    id: integer('id').primaryKey().default(1),
-    ciphertext: bytea('ciphertext').notNull(),
-    iv: bytea('iv').notNull(),
-    tag: bytea('tag').notNull(),
-    masterKeyVersion: integer('master_key_version').notNull().default(1),
-    createdAt: timestamptz('created_at')
-      .notNull()
-      .default(sql`now()`),
-  },
-  (table) => [
-    // Enforced by the database, not by convention: a second canary row would mean two
-    // answers to "is this the right master key", and the boot check could pick either.
-    check('vault_canary_single_row', sql`${table.id} = 1`),
-  ],
-);
+export const vaultCanary = pgTable('vault_canary', {
+  masterKeyVersion: integer('master_key_version').primaryKey(),
+  ciphertext: bytea('ciphertext').notNull(),
+  iv: bytea('iv').notNull(),
+  tag: bytea('tag').notNull(),
+  createdAt: timestamptz('created_at')
+    .notNull()
+    .default(sql`now()`),
+  retiredAt: timestamptz('retired_at'),
+});

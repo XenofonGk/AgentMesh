@@ -113,6 +113,64 @@ dumps its env" test that proves nothing leaks.
 | Retention | Transcripts contain everything the agent saw and are treated as sensitive. Default retention 30 days, user-purgeable                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Audit     | Log _that_ a credential was used, when, and by which run — never the value                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
+## How the vault binds ciphertext to its location
+
+Every stored ciphertext carries additional authenticated data naming where it lives.
+AAD is authenticated but not encrypted: change it and decryption fails with a bad
+authentication tag rather than quietly returning the right plaintext in the wrong place.
+
+| Sealed thing | Bound to                                      |
+| ------------ | --------------------------------------------- |
+| Credential   | `credential_id`, `provider`, `key_version`    |
+| Wrapped DEK  | `user_id`, `generation`, `master_key_version` |
+| Canary       | `master_key_version`                          |
+
+Without this a ciphertext is a portable blob: anyone with UPDATE on the database — or a
+buggy rotation script — can copy user A's credential row onto user B's account, and every
+check still passes. The row decrypts, the tag verifies, and B is now spending A's key.
+Binding makes that a decryption failure. It also pins `key_version`, so relabelling a row
+to dodge a rotation stops working.
+
+This is the one property that genuinely cannot be added later: AAD is mixed into the
+authentication tag at encryption time, so introducing it afterwards means decrypting and
+re-encrypting every credential under the old key.
+
+Each domain has its own prefix, so a sealed DEK can never be opened as a credential even
+if an attacker lines the identifiers up.
+
+## Runners never name a credential
+
+A runner says **"I am run R"**. It never says "give me credential C".
+
+If a credential reference were redeemable by whoever presents it, a compromised or
+prompt-injected runner would simply present a different one — and references travel
+through logs, run records, and error payloads, so obtaining one is not hard. The mapping
+from run to credential therefore lives in the proxy, server-side. The proxy issues an
+opaque 32-byte token when it starts a run, and derives the credential from that token on
+every request. The runner has no syntax in which to ask for someone else's key.
+
+Tokens are stored as SHA-256 hashes, scoped to a single run and to the exact provider set
+that run declared at issue time, revoked when the run ends, and held in memory only — a
+run token must not outlive the process that issued it. The provider is derived from the
+request's destination, never from a header the runner controls.
+
+## Zeroization is best-effort
+
+Plaintext key material is always a `Buffer`, never a `string`, and is overwritten as soon
+as its scope ends (`withSecret`). That reduces the window in which a heap dump or a core
+file yields a key.
+
+**It is not a guarantee, and this document will not claim one.** Node's garbage collector
+copies objects as it compacts, so by the time a buffer is overwritten the runtime may
+already have left copies elsewhere in the heap. Strings are worse — immutable, so they
+cannot be overwritten at all, and every substring or concatenation makes another copy —
+which is why plaintext is never a string anywhere in the vault or proxy. There is no way
+to reliably wipe memory in a managed runtime, and anyone who tells you otherwise is
+describing an optimization, not a control.
+
+The real defense remains structural: a decrypted key exists only inside one request's
+scope in the proxy, and the agent never receives one at all.
+
 ## Enforcement: hooks, not instructions
 
 The rules in `CLAUDE.md` are advice to a model that reads them. Injected text can argue a

@@ -38,7 +38,6 @@ async function reachable(): Promise<boolean> {
  * only reason to write it.
  */
 const UNIQUE_VIOLATION = '23505';
-const CHECK_VIOLATION = '23514';
 
 async function expectSqlState(
   operation: Promise<unknown>,
@@ -207,17 +206,24 @@ describeDb('schema (migration 1)', () => {
     expect(rows[0]?.count).toBe('0');
   });
 
-  it('permits only one vault canary row', async () => {
-    const canary = (id: number) =>
+  it('keys canaries by master key version, so v1 and v2 can coexist', async () => {
+    const canary = (version: number) =>
       handle.db.execute(sql`
-      insert into vault_canary (id, ciphertext, iv, tag)
-      values (${id}, '\\x00'::bytea, '\\x01'::bytea, '\\x02'::bytea)
+      insert into vault_canary (master_key_version, ciphertext, iv, tag)
+      values (${version}, '\\x00'::bytea, '\\x01'::bytea, '\\x02'::bytea)
     `);
 
-    await handle.db.execute(sql`delete from vault_canary`);
-    await canary(1);
-    // A second row would mean two answers to "is this the right master key".
-    await expectSqlState(canary(2), CHECK_VIOLATION);
+    // Rows persist for the life of the test database, so pick versions this run owns.
+    const base = 100_000 + Math.floor(Math.random() * 1_000_000);
+
+    // A rotation legitimately has both versions present at once — boot validation must
+    // not break in the middle of the operation the canary exists to protect.
+    await canary(base);
+    await canary(base + 1);
+
+    // But one row per version: two canaries for the same version would mean two answers
+    // to "is this the right key".
+    await expectSqlState(canary(base + 1), UNIQUE_VIOLATION);
   });
 
   it('has no column that could hold a plaintext credential', async () => {

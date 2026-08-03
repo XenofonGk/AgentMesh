@@ -20,10 +20,24 @@ const MIGRATIONS_FOLDER = path.resolve(import.meta.dirname, '..', 'migrations');
  * A dedicated single-connection client is used so a failed migration cannot leave a
  * poisoned connection in the application pool.
  */
+/**
+ * Arbitrary but fixed: every process that migrates this database must use the same
+ * number for the lock to mean anything.
+ */
+const MIGRATION_LOCK_ID = 0x41_67_4d_73; // "AgMs"
+
 export async function runMigrations(connectionString: string): Promise<void> {
   const client = postgres(connectionString, { max: 1, onnotice: () => {} });
   try {
-    await migrate(drizzle(client), { migrationsFolder: MIGRATIONS_FOLDER });
+    // Serialize concurrent migrators. Two API containers starting together, or two test
+    // files racing, otherwise both run CREATE TYPE and one loses. The lock is held on
+    // this connection and released with it even if the process dies mid-migration.
+    await client`select pg_advisory_lock(${MIGRATION_LOCK_ID})`;
+    try {
+      await migrate(drizzle(client), { migrationsFolder: MIGRATIONS_FOLDER });
+    } finally {
+      await client`select pg_advisory_unlock(${MIGRATION_LOCK_ID})`;
+    }
   } finally {
     await client.end({ timeout: 5 });
   }

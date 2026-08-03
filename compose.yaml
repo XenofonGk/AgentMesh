@@ -39,6 +39,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       DATABASE_URL: postgres://${POSTGRES_USER:-agentmesh}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agentmesh}
+      # Required. The API refuses to start without a valid 32-byte key, and refuses to
+      # start on the wrong one rather than presenting an empty vault.
+      VAULT_MASTER_KEY: '${VAULT_MASTER_KEY:?VAULT_MASTER_KEY is required — generate one with openssl rand -base64 32}'
+      VAULT_MASTER_KEY_VERSION: ${VAULT_MASTER_KEY_VERSION:-1}
     ports:
       - '127.0.0.1:${API_PORT:-3001}:3001'
     healthcheck:

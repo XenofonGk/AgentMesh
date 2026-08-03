@@ -24,7 +24,8 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.44.7",
-    "postgres": "^3.4.7"
+    "postgres": "^3.4.7",
+    "@agentmesh/core": "workspace:*"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.6"

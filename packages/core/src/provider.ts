@@ -37,6 +37,14 @@
  * around, retained, and eventually logged by someone who reasonably assumed it was
  * metadata. Only the proxy exchanges a `SecretRef` for header bytes, and only for the
  * duration of the request it is forwarding.
+ *
+ * ## A SecretRef is not a capability
+ *
+ * It is server-side bookkeeping, never something a runner presents. A ref that could be
+ * redeemed by whoever holds it would let a compromised runner ask for another user's
+ * credential, and refs travel through logs and run records. The runner presents a run
+ * token instead and the proxy derives the ref itself — see `apps/proxy/src/run-token.ts`.
+ * Nothing outside the API process should ever see one of these.
  */
 import type { Result } from './result.js';
 
