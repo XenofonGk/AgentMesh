@@ -1,0 +1,40 @@
+# Secrets — never commit. `.env.example` is the only env file that is tracked.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+*.p12
+secrets/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Test / tooling
+coverage/
+.vitest/
+.eslintcache
+
+# Editors & OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Local agent scratch
+.claude/settings.local.json

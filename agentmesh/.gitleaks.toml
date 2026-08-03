@@ -1,0 +1,16 @@
+title = "AgentMesh gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Placeholder values in documentation and example env files"
+paths = [
+  '''\.env\.example$''',
+  '''SECURITY\.md$''',
+  '''README\.md$''',
+]
+
+[[allowlists]]
+description = "Synthetic credentials used by redaction tests"
+paths = ['''.*\.test\.ts$''']

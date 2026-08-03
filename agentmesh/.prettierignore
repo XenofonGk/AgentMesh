@@ -1,0 +1,12 @@
+dist
+.next
+node_modules
+coverage
+pnpm-lock.yaml
+
+# Planning and agent-configuration docs are hand-formatted — Prettier reflows their
+# tables and lists and produces noisy, meaningless diffs.
+PLAN.md
+CLAUDE.md
+docs/
+.claude/
