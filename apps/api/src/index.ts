@@ -1,8 +1,14 @@
+import { runMigrations } from '@agentmesh/db';
 import { loadConfig } from './config.js';
 import { buildServer } from './server.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
+
+  // Before the server accepts a single request. A schema mismatch should be a failed
+  // start, not a stream of 500s from handlers querying tables that do not exist.
+  await runMigrations(config.DATABASE_URL);
+
   const { server, database } = await buildServer({ config });
 
   const shutdown = async (signal: string): Promise<void> => {
