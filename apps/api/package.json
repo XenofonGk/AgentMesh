@@ -14,6 +14,7 @@
   "dependencies": {
     "@agentmesh/core": "workspace:*",
     "@agentmesh/db": "workspace:*",
+    "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^11.1.0",
     "fastify": "^5.6.1",
     "zod": "^3.25.76"

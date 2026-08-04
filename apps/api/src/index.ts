@@ -1,4 +1,12 @@
-import { createDatabase, loadMasterKey, runMigrations, Vault, wipe } from '@agentmesh/db';
+import {
+  AdminSeedError,
+  createDatabase,
+  loadMasterKey,
+  runMigrations,
+  seedAdmin,
+  Vault,
+  wipe,
+} from '@agentmesh/db';
 import { loadConfig } from './config.js';
 import { buildServer } from './server.js';
 
@@ -17,6 +25,26 @@ async function main(): Promise<void> {
   const masterKey = loadMasterKey();
   try {
     await new Vault(database.db, masterKey).verifyOrInitialize();
+  } catch (error) {
+    await database.close();
+    throw error;
+  }
+
+  // Phase 1 has no signup flow — ADMIN_EMAIL/ADMIN_PASSWORD are the only way a user
+  // enters the system, so unlike `seedAdmin` itself (which treats "neither var set" as
+  // a harmless no-op, for callers that seed some other way), the API's own boot path
+  // treats it as fatal: an instance that starts with no possible login is an instance
+  // nobody can ever use.
+  if (!process.env['ADMIN_EMAIL'] && !process.env['ADMIN_PASSWORD']) {
+    await database.close();
+    throw new AdminSeedError(
+      'No admin account configured. Set ADMIN_EMAIL and ADMIN_PASSWORD (see .env.example) ' +
+        'so there is at least one way to log in.',
+    );
+  }
+
+  try {
+    await seedAdmin(database.db);
   } catch (error) {
     await database.close();
     throw error;
