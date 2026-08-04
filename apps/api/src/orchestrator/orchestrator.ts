@@ -98,6 +98,7 @@ export class Orchestrator {
       );
 
       const sandbox = await this.sandbox.create({
+        id: attempt.id,
         image: attemptImage.image,
         command: attemptImage.command,
         env: {

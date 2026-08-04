@@ -23,6 +23,14 @@ export interface ResourceLimits {
 }
 
 export interface RunSpec {
+  /**
+   * The caller's own identifier for this sandbox — an attempt id, say — distinct from
+   * `Sandbox.id`, which the provider assigns once the sandbox actually exists. Not
+   * every provider needs it (an in-process fake can ignore it entirely), but a
+   * provider that runs out-of-process — the HTTP broker client, for one — needs
+   * something to name the request by before any backend id exists yet.
+   */
+  id: string;
   image: string;
   /** The command run as the sandbox's own entrypoint — not something exec'd in later. */
   command: readonly string[];

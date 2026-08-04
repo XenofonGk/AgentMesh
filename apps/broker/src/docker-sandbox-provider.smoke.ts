@@ -1,6 +1,6 @@
 /**
  * Adversarial smoke test for `DockerSandboxProvider`, run by hand against a real Docker
- * daemon: `pnpm --filter @agentmesh/api exec tsx src/orchestrator/docker-sandbox-provider.smoke.ts`
+ * daemon: `pnpm --filter @agentmesh/broker exec tsx src/docker-sandbox-provider.smoke.ts`
  *
  * Not part of `pnpm test` — CI has no Docker-in-Docker, and the vacuous-green trap this
  * is written against is exactly what unit tests against `FakeSandboxProvider` cannot
@@ -68,6 +68,7 @@ async function main(): Promise<void> {
   console.log('--- rootfs, tmpfs, workspace ---');
   {
     const sandbox = await provider.create({
+      id: crypto.randomUUID(),
       image: IMAGE,
       command: ['sh', '-c', 'sleep 120'],
       env: {},
@@ -104,6 +105,7 @@ async function main(): Promise<void> {
   console.log('--- workspace mount stays writable ---');
   {
     const sandbox = await provider.create({
+      id: crypto.randomUUID(),
       image: IMAGE,
       command: ['sh', '-c', 'sleep 120'],
       env: {},
@@ -130,6 +132,7 @@ async function main(): Promise<void> {
   console.log('--- capabilities, privilege escalation ---');
   {
     const sandbox = await provider.create({
+      id: crypto.randomUUID(),
       image: IMAGE,
       command: ['sh', '-c', 'sleep 120'],
       env: {},
@@ -181,6 +184,7 @@ async function main(): Promise<void> {
   console.log('--- network topology ---');
   {
     const sandbox = await provider.create({
+      id: crypto.randomUUID(),
       image: IMAGE,
       command: ['sh', '-c', 'sleep 120'],
       env: {},
@@ -209,6 +213,7 @@ async function main(): Promise<void> {
   console.log('--- teardown of a SIGTERM-ignoring container ---');
   {
     const sandbox = await provider.create({
+      id: crypto.randomUUID(),
       image: IMAGE,
       command: ['sh', '-c', "trap '' TERM; while true; do sleep 1; done"],
       env: {},

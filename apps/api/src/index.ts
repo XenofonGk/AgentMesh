@@ -9,7 +9,7 @@ import {
 } from '@agentmesh/db';
 import { loadConfig } from './config.js';
 import { buildServer } from './server.js';
-import { DockerSandboxProvider } from './orchestrator/docker-sandbox-provider.js';
+import { HttpSandboxProvider } from './orchestrator/http-sandbox-provider.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -52,7 +52,7 @@ async function main(): Promise<void> {
     throw error;
   }
 
-  const sandbox = new DockerSandboxProvider();
+  const sandbox = new HttpSandboxProvider({ brokerUrl: config.BROKER_URL });
   const { server } = await buildServer({ config, database, vault, sandbox });
 
   const shutdown = async (signal: string): Promise<void> => {
