@@ -24,7 +24,10 @@ COPY packages ./packages
 COPY apps/web ./apps/web
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
-RUN pnpm --filter @agentmesh/web build
+# `...` — not just `@agentmesh/web` — so @agentmesh/core builds first and its dist/
+# exists before Next resolves the import; api/proxy/broker's Dockerfiles already do
+# this, this one didn't need to until apps/web/lib/api.ts started importing AgentEvent.
+RUN pnpm --filter @agentmesh/web... build
 
 FROM base AS runtime
 ENV NODE_ENV=production

@@ -1,29 +1,112 @@
-const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:3001';
+'use client';
 
-export default function Home() {
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { me, startRun } from '../lib/api';
+
+/**
+ * Only `claude` is selectable: it's the only provider with a real adapter
+ * (`packages/adapters/src/claude`) — see PLAN.md Phase 3 for the rest.
+ */
+const AVAILABLE_PROVIDERS = ['claude'];
+
+export default function HomePage(): React.JSX.Element | null {
+  const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
+  const [task, setTask] = useState('');
+  const [providers, setProviders] = useState<string[]>(['claude']);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void me().then((user) => {
+      if (!user) {
+        router.replace('/login');
+        return;
+      }
+      setAuthChecked(true);
+    });
+  }, [router]);
+
+  function toggleProvider(provider: string): void {
+    setProviders((current) =>
+      current.includes(provider)
+        ? current.filter((entry) => entry !== provider)
+        : [...current, provider],
+    );
+  }
+
+  async function handleSubmit(event: React.FormEvent): Promise<void> {
+    event.preventDefault();
+    if (providers.length === 0) {
+      setError('Pick at least one provider.');
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+    try {
+      const { runId } = await startRun(task, providers);
+      router.push(`/runs/${runId}`);
+    } catch {
+      setError('Failed to start the run.');
+      setSubmitting(false);
+    }
+  }
+
+  if (!authChecked) return null;
+
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 px-6">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">AgentMesh</h1>
         <p className="mt-2 text-neutral-600 dark:text-neutral-400">
-          Self-hosted control plane for running AI coding agents across providers. You
-          bring your own credentials; they never leave this instance.
+          Describe a task and watch an agent work on it, live.
         </p>
       </div>
 
-      <div className="rounded-lg border border-neutral-200 p-4 text-sm dark:border-neutral-800">
-        <p className="font-medium">Phase 0 — foundations</p>
-        <p className="mt-1 text-neutral-600 dark:text-neutral-400">
-          The stack is up and empty. API readiness:{' '}
-          <a
-            className="underline underline-offset-4"
-            href={`${API_URL}/readyz`}
-            rel="noreferrer"
-          >
-            {API_URL}/readyz
-          </a>
-        </p>
-      </div>
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(event) => void handleSubmit(event)}
+      >
+        <label className="flex flex-col gap-1 text-sm">
+          Task
+          <textarea
+            className="min-h-32 rounded-md border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
+            required
+            value={task}
+            onChange={(event) => {
+              setTask(event.target.value);
+            }}
+            placeholder="e.g. Add input validation to the signup form"
+          />
+        </label>
+
+        <fieldset className="flex flex-col gap-2 text-sm">
+          <legend className="mb-1">Providers</legend>
+          {AVAILABLE_PROVIDERS.map((provider) => (
+            <label key={provider} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={providers.includes(provider)}
+                onChange={() => {
+                  toggleProvider(provider);
+                }}
+              />
+              {provider}
+            </label>
+          ))}
+        </fieldset>
+
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+        <button
+          type="submit"
+          disabled={submitting}
+          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+        >
+          {submitting ? 'Starting…' : 'Start run'}
+        </button>
+      </form>
     </main>
   );
 }
