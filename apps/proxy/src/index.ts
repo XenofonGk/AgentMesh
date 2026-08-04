@@ -1,19 +1,16 @@
 /**
  * Credential-injecting egress proxy.
  *
- * The proxy itself is Phase 1 work (PLAN.md §5). What exists at Phase 0 is the one
- * thing that must never be decided casually later: the bind address.
- *
- * Invariant 2 — the proxy binds to loopback only. It holds decrypted provider keys in
- * memory and injects them into outbound requests; anything that can reach it can spend
- * a user's credentials. Binding it to 0.0.0.0 turns a local component into an open
- * credential relay, so the address is a constant here rather than a configurable value.
+ * Invariant 2 — the proxy binds to loopback only (`constants.ts`). It holds decrypted
+ * provider keys in memory for the life of a single request and injects them into
+ * outbound requests; anything that can reach it can spend a user's credentials.
  */
 
-export const PROXY_BIND_HOST = '127.0.0.1' as const;
-
-/** Default port. Configurable — unlike the host. */
-export const PROXY_DEFAULT_PORT = 3002 as const;
-
+export { PROXY_BIND_HOST, PROXY_DEFAULT_PORT } from './constants.js';
 export { RunTokenRegistry } from './run-token.js';
 export type { IssuedToken, RunGrant } from './run-token.js';
+export { buildProxyServer } from './server.js';
+export type { BuildProxyOptions, ProxyApp } from './server.js';
+export { DEFAULT_PROVIDER_ROUTES, resolveProviderRoute } from './providers.js';
+export type { ProviderRoute } from './providers.js';
+export { filterInboundHeaders, RUN_TOKEN_HEADER } from './headers.js';
