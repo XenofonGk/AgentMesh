@@ -45,6 +45,9 @@ importers:
       '@agentmesh/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@agentmesh/skills':
+        specifier: workspace:*
+        version: link:../../packages/skills
       '@fastify/cookie':
         specifier: ^11.1.2
         version: 11.1.2

@@ -251,6 +251,16 @@ export const runs = pgTable('runs', {
     .references(() => users.id, { onDelete: 'cascade' }),
   task: text('task').notNull(),
   status: runStatus('status').notNull().default('pending'),
+  /**
+   * Skill names (`Skill.name`, `@agentmesh/skills`) attached to this run, applied
+   * identically to every attempt — PLAN.md §5 Phase 4's "same artifact, different
+   * delivery." Deliberately just the names, not a join table: skills aren't versioned
+   * rows yet (that's Phase 5's improvement loop, §6 — "skills are versioned, immutable
+   * rows"), so there is nothing today for a foreign key to reference. A `jsonb` array
+   * of names is the whole entitlement until that exists. Nullable/default-empty rather
+   * than required: most runs select no skills.
+   */
+  skillNames: jsonb('skill_names').$type<string[]>().notNull().default([]),
   createdAt: timestamptz('created_at')
     .notNull()
     .default(sql`now()`),

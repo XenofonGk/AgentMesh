@@ -78,6 +78,7 @@ export async function buildServer({
       orchestrator,
       config.PROXY_URL,
       config.API_URL,
+      config.AGENTMESH_SKILLS_DIR,
     );
   }
   await registerEventRoutes(server, db.db, config.WEB_ORIGIN, orchestrator);

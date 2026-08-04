@@ -29,6 +29,13 @@
       "when": 1785873184026,
       "tag": "0003_file_edit_review",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785873918939,
+      "tag": "0004_skill_names",
+      "breakpoints": true
     }
   ]
 }
