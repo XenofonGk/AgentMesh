@@ -13,6 +13,8 @@ export interface FakeSandboxRecord {
 
 export class FakeSandboxProvider implements SandboxProvider {
   readonly sandboxes = new Map<string, FakeSandboxRecord>();
+  /** How many times `destroy` was actually called — what an idempotency test asserts on. */
+  destroyCallCount = 0;
   private nextId = 0;
 
   async create(spec: RunSpec): Promise<Sandbox> {
@@ -32,6 +34,7 @@ export class FakeSandboxProvider implements SandboxProvider {
   }
 
   async destroy(id: string): Promise<void> {
+    this.destroyCallCount++;
     const record = this.sandboxes.get(id);
     if (record) {
       record.destroyed = true;

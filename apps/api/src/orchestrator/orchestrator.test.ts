@@ -133,4 +133,69 @@ describeDb('Orchestrator', () => {
     expect(row?.status).toBe('succeeded');
     expect(row?.completedAt).not.toBeNull();
   });
+
+  it('finishAttempt is idempotent — a second call cannot clobber the first outcome', async () => {
+    const userId = await freshUser();
+    const sandbox = new FakeSandboxProvider();
+    const orchestrator = new Orchestrator(handle.db, sandbox);
+
+    const { attemptIds } = await orchestrator.startRun({
+      userId,
+      task: 'do the thing',
+      proxyUrl: 'http://proxy:3002',
+      apiUrl: 'http://api:3001',
+      attempts: [
+        { provider: 'claude', image: 'agentmesh/claude:latest', command: ['run'] },
+      ],
+    });
+    const attemptId = attemptIds[0]!;
+
+    await orchestrator.finishAttempt(attemptId, { status: 'succeeded' });
+    // A timeout racing in after the done event already won — must not overwrite it.
+    await orchestrator.finishAttempt(attemptId, {
+      status: 'timed_out',
+      errorMessage: 'attempt exceeded its wall-clock timeout',
+    });
+
+    expect(sandbox.destroyCallCount).toBe(1);
+    const [row] = await handle.db
+      .select()
+      .from(attempts)
+      .where(eq(attempts.id, attemptId));
+    expect(row?.status).toBe('succeeded');
+    expect(row?.errorMessage).toBeNull();
+  });
+
+  it('times out and tears down an attempt that never reports done', async () => {
+    const userId = await freshUser();
+    const sandbox = new FakeSandboxProvider();
+    // A real, tiny timeout rather than faked timers: this is an integration test
+    // against real Postgres, and faking global timers stalls the driver's own
+    // internals along with the one timer the test actually wants to fast-forward.
+    const orchestrator = new Orchestrator(handle.db, sandbox, 20);
+
+    const { attemptIds } = await orchestrator.startRun({
+      userId,
+      task: 'do the thing',
+      proxyUrl: 'http://proxy:3002',
+      apiUrl: 'http://api:3001',
+      attempts: [
+        { provider: 'claude', image: 'agentmesh/claude:latest', command: ['run'] },
+      ],
+    });
+    const attemptId = attemptIds[0]!;
+
+    // Wall-clock enforcement lives in the orchestrator, not DockerSandboxProvider — see
+    // packages/core/src/sandbox.ts's own doc comment on RunSpec.timeoutMs. This is the
+    // only thing that ever tears down a container whose runner crashed silently before
+    // reporting a done event.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(sandbox.destroyCallCount).toBe(1);
+    const [row] = await handle.db
+      .select()
+      .from(attempts)
+      .where(eq(attempts.id, attemptId));
+    expect(row?.status).toBe('timed_out');
+  });
 });

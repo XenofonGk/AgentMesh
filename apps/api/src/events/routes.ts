@@ -11,6 +11,12 @@
  * shouldn't be given one; the SSE route sits behind `requireSession` like every other
  * browser-facing route, and additionally checks the requesting user owns the run the
  * attempt belongs to.
+ *
+ * The ingest route is also the only signal the API has that an attempt is over: a
+ * `done` event is what tells `Orchestrator.finishAttempt` to destroy the sandbox and
+ * revoke its run grant (see `orchestrator.ts`'s own doc comment on why that's
+ * idempotent — this and the orchestrator's wall-clock timeout can both fire for the
+ * same attempt).
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -26,6 +32,7 @@ import {
 import type { AgentEvent } from '@agentmesh/core';
 import { requireSession } from '../auth/guard.js';
 import { publish, subscribe } from './event-bus.js';
+import type { Orchestrator } from '../orchestrator/orchestrator.js';
 
 const { attempts, runs } = schema;
 
@@ -61,6 +68,7 @@ const RUN_TOKEN_HEADER = 'x-agentmesh-run-token';
 export async function registerEventRoutes(
   server: FastifyInstance,
   db: Database,
+  orchestrator?: Orchestrator,
 ): Promise<void> {
   server.post('/internal/attempts/:id/events', async (request, reply) => {
     const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
@@ -92,6 +100,12 @@ export async function registerEventRoutes(
     const event = body.data as unknown as AgentEvent;
     await appendEvent(db, event);
     publish(event);
+
+    if (event.type === 'done' && orchestrator) {
+      await orchestrator.finishAttempt(event.attemptId, {
+        status: event.outcome,
+      });
+    }
 
     return reply.code(202).send();
   });
