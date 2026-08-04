@@ -69,8 +69,9 @@ export async function buildServer({
   if (vault !== undefined) {
     await registerCredentialRoutes(server, db.db, vault);
   }
-  if (sandbox !== undefined) {
-    const orchestrator = new Orchestrator(db.db, sandbox);
+  const orchestrator =
+    sandbox !== undefined ? new Orchestrator(db.db, sandbox) : undefined;
+  if (orchestrator !== undefined) {
     await registerOrchestratorRoutes(
       server,
       db.db,
@@ -79,7 +80,7 @@ export async function buildServer({
       config.API_URL,
     );
   }
-  await registerEventRoutes(server, db.db);
+  await registerEventRoutes(server, db.db, orchestrator);
 
   /** Liveness: is the process up? Never touches the database. */
   server.get('/health', () => ({ status: 'ok' as const }));

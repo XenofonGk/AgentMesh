@@ -9,10 +9,13 @@
  * CLAUDE.md's "Adding a provider adapter"), not the orchestrator's — this module only
  * owns the run lifecycle, not per-provider behavior.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { Database } from '@agentmesh/db';
 import { issueRunToken, revokeRunGrant, schema } from '@agentmesh/db';
 import type { SandboxProvider } from '@agentmesh/core';
+
+/** Attempt states `finishAttempt` is allowed to transition out of — see its own doc comment. */
+const OPEN_STATUSES = ['pending', 'running'] as const;
 
 const { attempts, runs } = schema;
 
@@ -20,8 +23,13 @@ const { attempts, runs } = schema;
 const RUNNER_NETWORK = 'internal';
 /** Wall-clock cap on a single attempt, enforced by the sandbox's own timeout plus this destroy. */
 const DEFAULT_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
-/** Run tokens are scoped to one attempt's lifetime, not reused across retries. */
-const RUN_TOKEN_TTL_MS = DEFAULT_ATTEMPT_TIMEOUT_MS + 60 * 1000;
+/**
+ * A run token outlives its attempt's own timeout by this much — the token must still
+ * resolve while `finishAttempt` is busy tearing the attempt down, not expire out from
+ * under it. Not itself overridable: it's a safety margin around whatever
+ * `attemptTimeoutMs` a caller chose, not a second timeout to keep in sync by hand.
+ */
+const RUN_TOKEN_TTL_GRACE_MS = 60 * 1000;
 
 export interface AttemptImage {
   provider: string;
@@ -44,9 +52,19 @@ export interface StartRunResult {
 }
 
 export class Orchestrator {
+  /**
+   * The wall-clock enforcement `packages/core/src/sandbox.ts` says lives here, not in
+   * `SandboxProvider` — `DockerSandboxProvider` never reads `RunSpec.timeoutMs` itself.
+   * Cleared by `finishAttempt` however an attempt ends, so a normal completion doesn't
+   * leave a dangling timer around for the container's full remaining budget.
+   */
+  private readonly timeouts = new Map<string, NodeJS.Timeout>();
+
   constructor(
     private readonly db: Database,
     private readonly sandbox: SandboxProvider,
+    /** Overridable so tests can exercise the timeout path in milliseconds, not minutes. */
+    private readonly attemptTimeoutMs: number = DEFAULT_ATTEMPT_TIMEOUT_MS,
   ) {}
 
   /**
@@ -100,7 +118,7 @@ export class Orchestrator {
       const { token } = await issueRunToken(
         this.db,
         { attemptId: attempt.id, userId, provider: attemptImage.provider },
-        RUN_TOKEN_TTL_MS,
+        this.attemptTimeoutMs + RUN_TOKEN_TTL_GRACE_MS,
       );
 
       const sandbox = await this.sandbox.create({
@@ -117,13 +135,22 @@ export class Orchestrator {
         },
         networks: [RUNNER_NETWORK],
         resources: { cpus: 1, memoryMb: 2048 },
-        timeoutMs: DEFAULT_ATTEMPT_TIMEOUT_MS,
+        timeoutMs: this.attemptTimeoutMs,
       });
 
       await this.db
         .update(attempts)
         .set({ status: 'running', containerId: sandbox.id, startedAt: new Date() })
         .where(eq(attempts.id, attempt.id));
+
+      const timer = setTimeout(() => {
+        void this.finishAttempt(attempt.id, {
+          status: 'timed_out',
+          errorMessage: 'attempt exceeded its wall-clock timeout',
+        });
+      }, this.attemptTimeoutMs);
+      timer.unref();
+      this.timeouts.set(attempt.id, timer);
     } catch (error) {
       await this.db
         .update(attempts)
@@ -140,7 +167,16 @@ export class Orchestrator {
     return attempt.id;
   }
 
-  /** Called on normal completion, timeout, or cancellation alike — always tears down both. */
+  /**
+   * Called on normal completion (the API's ingest route, on a `done` AgentEvent — see
+   * `apps/api/src/events/routes.ts`), timeout (this class's own setTimeout, above), or
+   * cancellation alike — always tears down both. Idempotent by design: a `done` event
+   * and this attempt's own timeout can both fire for the same attempt (the event
+   * arriving right as the timer was about to), and whichever loses the race must be a
+   * no-op rather than clobbering the outcome the other one already recorded — an
+   * attempt that finished 'succeeded' must never be overwritten to 'timed_out' by a
+   * timer that simply hadn't been cleared yet.
+   */
   async finishAttempt(
     attemptId: string,
     outcome: {
@@ -148,23 +184,29 @@ export class Orchestrator {
       errorMessage?: string;
     },
   ): Promise<void> {
-    const [attempt] = await this.db
-      .select({ containerId: attempts.containerId })
-      .from(attempts)
-      .where(eq(attempts.id, attemptId));
-
-    if (attempt?.containerId) {
-      await this.sandbox.destroy(attempt.containerId);
+    const timer = this.timeouts.get(attemptId);
+    if (timer) {
+      clearTimeout(timer);
+      this.timeouts.delete(attemptId);
     }
-    await revokeRunGrant(this.db, attemptId);
 
-    await this.db
+    const [attempt] = await this.db
       .update(attempts)
       .set({
         status: outcome.status,
         errorMessage: outcome.errorMessage,
         completedAt: new Date(),
       })
-      .where(eq(attempts.id, attemptId));
+      .where(and(eq(attempts.id, attemptId), inArray(attempts.status, OPEN_STATUSES)))
+      .returning({ containerId: attempts.containerId });
+
+    // No row matched: some earlier call already finished this attempt. Everything below
+    // (destroy, revoke) was already done by that call — nothing left to do here.
+    if (!attempt) return;
+
+    if (attempt.containerId) {
+      await this.sandbox.destroy(attempt.containerId);
+    }
+    await revokeRunGrant(this.db, attemptId);
   }
 }

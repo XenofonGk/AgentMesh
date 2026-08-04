@@ -4,6 +4,7 @@
  * response deliberately never ends while a client is subscribed).
  */
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   createDatabase,
@@ -17,6 +18,7 @@ import {
 import { buildServer, type App } from '../server.js';
 import { loadConfig } from '../config.js';
 import { SESSION_COOKIE_NAME } from '../auth/session-cookie.js';
+import { FakeSandboxProvider } from '../orchestrator/fake-sandbox-provider.js';
 
 const CONNECTION = process.env['TEST_DATABASE_URL'] ?? '';
 
@@ -146,6 +148,55 @@ describeDb('event routes', () => {
         payload: messageDelta(attemptId, 'hi'),
       });
       expect(response.statusCode).toBe(202);
+    });
+
+    it('a done event finishes the attempt: destroys its sandbox and revokes its token', async () => {
+      const sandbox = new FakeSandboxProvider();
+      app = await buildServer({ config, database: handle, sandbox });
+
+      const email = `${randomUUID()}@example.test`;
+      const { userId } = await createUserWithPassword(
+        handle.db,
+        email,
+        'a genuinely long passphrase',
+      );
+      const sessionToken = await createSession(handle.db, userId);
+      const cookie = `${SESSION_COOKIE_NAME}=${sessionToken}`;
+
+      const startRun = await app.server.inject({
+        method: 'POST',
+        url: '/runs',
+        headers: { cookie },
+        payload: { task: 'do the thing', providers: ['claude'] },
+      });
+      expect(startRun.statusCode).toBe(201);
+      const { attemptIds } = startRun.json<{ attemptIds: string[] }>();
+      const attemptId = attemptIds[0]!;
+      const runToken = [...sandbox.sandboxes.values()][0]!.spec.env[
+        'AGENTMESH_RUN_TOKEN'
+      ]!;
+
+      const response = await app.server.inject({
+        method: 'POST',
+        url: `/internal/attempts/${attemptId}/events`,
+        headers: { 'x-agentmesh-run-token': runToken },
+        payload: {
+          attemptId,
+          provider: 'claude',
+          timestamp: new Date().toISOString(),
+          type: 'done',
+          outcome: 'succeeded',
+          usage: null,
+        },
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(sandbox.destroyCallCount).toBe(1);
+      const [row] = await handle.db
+        .select({ status: schema.attempts.status })
+        .from(schema.attempts)
+        .where(eq(schema.attempts.id, attemptId));
+      expect(row?.status).toBe('succeeded');
     });
   });
 
