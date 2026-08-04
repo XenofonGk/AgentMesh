@@ -279,4 +279,183 @@ describeDb('event routes', () => {
       controller.abort();
     });
   });
+
+  describe('review (approve/reject a file_edit)', () => {
+    function fileEdit(attemptId: string, path: string): Record<string, unknown> {
+      return {
+        attemptId,
+        provider: 'claude',
+        timestamp: new Date().toISOString(),
+        type: 'file_edit',
+        path,
+        diff: '--- a\n+++ b\n',
+      };
+    }
+
+    async function freshSession(): Promise<{ userId: string; cookie: string }> {
+      const email = `${randomUUID()}@example.test`;
+      const { userId } = await createUserWithPassword(
+        handle.db,
+        email,
+        'a genuinely long passphrase',
+      );
+      const token = await createSession(handle.db, userId);
+      return { userId, cookie: `${SESSION_COOKIE_NAME}=${token}` };
+    }
+
+    async function ingestFileEdit(
+      attemptId: string,
+      userId: string,
+    ): Promise<{ app: App }> {
+      const localApp = app!;
+      const { token } = await issueRunToken(
+        handle.db,
+        { attemptId, userId, provider: 'claude' },
+        60_000,
+      );
+      const response = await localApp.server.inject({
+        method: 'POST',
+        url: `/internal/attempts/${attemptId}/events`,
+        headers: { 'x-agentmesh-run-token': token },
+        payload: fileEdit(attemptId, 'a.ts'),
+      });
+      expect(response.statusCode).toBe(202);
+      return { app: localApp };
+    }
+
+    it('rejects an unauthenticated request', async () => {
+      app = await buildServer({ config, database: handle });
+      const { attemptId } = await freshAttempt();
+
+      const response = await app.server.inject({
+        method: 'PATCH',
+        url: `/attempts/${attemptId}/events/1/review`,
+        payload: { status: 'approved' },
+      });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('404s for an attempt belonging to another user', async () => {
+      app = await buildServer({ config, database: handle });
+      const owner = await freshSession();
+      const other = await freshSession();
+      const [run] = await handle.db
+        .insert(schema.runs)
+        .values({ userId: owner.userId, task: 'test' })
+        .returning({ id: schema.runs.id });
+      const [attempt] = await handle.db
+        .insert(schema.attempts)
+        .values({ runId: run!.id, provider: 'claude' })
+        .returning({ id: schema.attempts.id });
+      await ingestFileEdit(attempt!.id, owner.userId);
+
+      const response = await app.server.inject({
+        method: 'PATCH',
+        url: `/attempts/${attempt!.id}/events/1/review`,
+        headers: { cookie: other.cookie },
+        payload: { status: 'approved' },
+      });
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('approves a file_edit event for its owner and persists the verdict', async () => {
+      app = await buildServer({ config, database: handle });
+      const { userId, cookie } = await freshSession();
+      const [run] = await handle.db
+        .insert(schema.runs)
+        .values({ userId, task: 'test' })
+        .returning({ id: schema.runs.id });
+      const [attempt] = await handle.db
+        .insert(schema.attempts)
+        .values({ runId: run!.id, provider: 'claude' })
+        .returning({ id: schema.attempts.id });
+      await ingestFileEdit(attempt!.id, userId);
+
+      const [row] = await handle.db
+        .select({ id: schema.agentEvents.id })
+        .from(schema.agentEvents)
+        .where(eq(schema.agentEvents.attemptId, attempt!.id));
+
+      const response = await app.server.inject({
+        method: 'PATCH',
+        url: `/attempts/${attempt!.id}/events/${row!.id.toString()}/review`,
+        headers: { cookie },
+        payload: { status: 'approved' },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ reviewStatus: 'approved' });
+
+      const [updated] = await handle.db
+        .select({
+          reviewStatus: schema.agentEvents.reviewStatus,
+          reviewedBy: schema.agentEvents.reviewedBy,
+        })
+        .from(schema.agentEvents)
+        .where(eq(schema.agentEvents.id, row!.id));
+      expect(updated?.reviewStatus).toBe('approved');
+      expect(updated?.reviewedBy).toBe(userId);
+    });
+
+    it('rejects an invalid status value', async () => {
+      app = await buildServer({ config, database: handle });
+      const { userId, cookie } = await freshSession();
+      const [run] = await handle.db
+        .insert(schema.runs)
+        .values({ userId, task: 'test' })
+        .returning({ id: schema.runs.id });
+      const [attempt] = await handle.db
+        .insert(schema.attempts)
+        .values({ runId: run!.id, provider: 'claude' })
+        .returning({ id: schema.attempts.id });
+      await ingestFileEdit(attempt!.id, userId);
+      const [row] = await handle.db
+        .select({ id: schema.agentEvents.id })
+        .from(schema.agentEvents)
+        .where(eq(schema.agentEvents.attemptId, attempt!.id));
+
+      const response = await app.server.inject({
+        method: 'PATCH',
+        url: `/attempts/${attempt!.id}/events/${row!.id.toString()}/review`,
+        headers: { cookie },
+        payload: { status: 'pending' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('404s for an event that is not a file_edit', async () => {
+      app = await buildServer({ config, database: handle });
+      const { userId, cookie } = await freshSession();
+      const [run] = await handle.db
+        .insert(schema.runs)
+        .values({ userId, task: 'test' })
+        .returning({ id: schema.runs.id });
+      const [attempt] = await handle.db
+        .insert(schema.attempts)
+        .values({ runId: run!.id, provider: 'claude' })
+        .returning({ id: schema.attempts.id });
+      const { token } = await issueRunToken(
+        handle.db,
+        { attemptId: attempt!.id, userId, provider: 'claude' },
+        60_000,
+      );
+      await app.server.inject({
+        method: 'POST',
+        url: `/internal/attempts/${attempt!.id}/events`,
+        headers: { 'x-agentmesh-run-token': token },
+        payload: messageDelta(attempt!.id, 'hi'),
+      });
+      const [row] = await handle.db
+        .select({ id: schema.agentEvents.id })
+        .from(schema.agentEvents)
+        .where(eq(schema.agentEvents.attemptId, attempt!.id));
+
+      const response = await app.server.inject({
+        method: 'PATCH',
+        url: `/attempts/${attempt!.id}/events/${row!.id.toString()}/review`,
+        headers: { cookie },
+        payload: { status: 'approved' },
+      });
+      expect(response.statusCode).toBe(404);
+    });
+  });
 });

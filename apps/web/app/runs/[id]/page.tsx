@@ -6,10 +6,19 @@ import type { AgentEvent } from '@agentmesh/core';
 import {
   getRun,
   me,
+  reviewFileEdit,
   subscribeToAttempt,
   type AttemptSummary,
+  type ReviewStatus,
   type RunDetail,
 } from '../../../lib/api';
+
+/**
+ * The wire shape the SSE route actually sends — `AgentEvent` plus the review verdict,
+ * which lives in the DB/API layer, not in `packages/core`'s `AgentEvent` (CLAUDE.md:
+ * that type is never widened locally). See `apps/api/src/events/routes.ts`'s `write()`.
+ */
+type WireEvent = AgentEvent & { reviewStatus: ReviewStatus };
 
 function formatStats(attempt: AttemptSummary): string | null {
   const parts: string[] = [];
@@ -46,6 +55,10 @@ interface FileEditBlock {
   kind: 'file_edit';
   path: string;
   diff: string;
+  /** DB id of the underlying event — what the review PATCH addresses. Absent only if
+   *  the SSE `id:` line was somehow missing, which never happens in practice. */
+  eventId: string | null;
+  reviewStatus: ReviewStatus;
 }
 type Block = TextBlock | ToolBlock | NoteBlock | FileEditBlock;
 
@@ -70,11 +83,16 @@ function DiffView({ diff }: { diff: string }) {
   );
 }
 
-function reduceEvents(events: AgentEvent[]): Block[] {
+interface StoredEvent {
+  id: string | null;
+  event: WireEvent;
+}
+
+function reduceEvents(stored: StoredEvent[]): Block[] {
   const blocks: Block[] = [];
   const toolIndex = new Map<string, number>();
 
-  for (const event of events) {
+  for (const { id, event } of stored) {
     switch (event.type) {
       case 'message_delta': {
         const last = blocks.at(-1);
@@ -100,7 +118,13 @@ function reduceEvents(events: AgentEvent[]): Block[] {
         break;
       }
       case 'file_edit':
-        blocks.push({ kind: 'file_edit', path: event.path, diff: event.diff });
+        blocks.push({
+          kind: 'file_edit',
+          path: event.path,
+          diff: event.diff,
+          eventId: id,
+          reviewStatus: event.reviewStatus,
+        });
         break;
       case 'thinking':
         blocks.push({ kind: 'thinking', detail: event.text });
@@ -119,13 +143,20 @@ function reduceEvents(events: AgentEvent[]): Block[] {
 
 function AttemptPanel({ attempt }: { attempt: AttemptSummary }) {
   const { id: attemptId, provider } = attempt;
-  const [events, setEvents] = useState<AgentEvent[]>([]);
+  const [events, setEvents] = useState<StoredEvent[]>([]);
+  /** Optimistic overrides for the review verdicts just clicked, keyed by event id — so
+   *  a click reflects instantly rather than waiting on a page reload / SSE echo. */
+  const [reviewOverrides, setReviewOverrides] = useState<Record<string, ReviewStatus>>(
+    {},
+  );
+  const [reviewPending, setReviewPending] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const source = subscribeToAttempt(attemptId);
     source.onmessage = (message) => {
-      const event = JSON.parse(message.data as string) as AgentEvent;
-      setEvents((current) => [...current, event]);
+      const event = JSON.parse(message.data as string) as WireEvent;
+      const id = message.lastEventId !== '' ? message.lastEventId : null;
+      setEvents((current) => [...current, { id, event }]);
     };
     return () => {
       source.close();
@@ -134,8 +165,24 @@ function AttemptPanel({ attempt }: { attempt: AttemptSummary }) {
 
   const blocks = reduceEvents(events);
   const done = events.find(
-    (event): event is Extract<AgentEvent, { type: 'done' }> => event.type === 'done',
-  );
+    (stored): stored is StoredEvent & { event: Extract<WireEvent, { type: 'done' }> } =>
+      stored.event.type === 'done',
+  )?.event;
+
+  async function handleReview(
+    eventId: string,
+    status: Extract<ReviewStatus, 'approved' | 'rejected'>,
+  ): Promise<void> {
+    setReviewPending((current) => ({ ...current, [eventId]: true }));
+    try {
+      const ok = await reviewFileEdit(attemptId, eventId, status);
+      if (ok) {
+        setReviewOverrides((current) => ({ ...current, [eventId]: status }));
+      }
+    } finally {
+      setReviewPending((current) => ({ ...current, [eventId]: false }));
+    }
+  }
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
@@ -172,13 +219,52 @@ function AttemptPanel({ attempt }: { attempt: AttemptSummary }) {
             );
           }
           if (block.kind === 'file_edit') {
+            const eventId = block.eventId;
+            const status = eventId
+              ? (reviewOverrides[eventId] ?? block.reviewStatus)
+              : block.reviewStatus;
+            const pending = eventId ? (reviewPending[eventId] ?? false) : false;
             return (
               <div
                 key={index}
                 className="mb-3 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800"
               >
-                <div className="border-b border-neutral-200 bg-neutral-50 px-2 py-1 font-mono text-xs dark:border-neutral-800 dark:bg-neutral-900">
-                  {block.path}
+                <div className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-2 py-1 dark:border-neutral-800 dark:bg-neutral-900">
+                  <span className="font-mono text-xs">{block.path}</span>
+                  <div className="flex items-center gap-2">
+                    {status === 'pending' && eventId ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => void handleReview(eventId, 'approved')}
+                          className="rounded border border-green-600 px-2 py-0.5 text-xs text-green-700 hover:bg-green-50 disabled:opacity-50 dark:text-green-400 dark:hover:bg-green-950"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => void handleReview(eventId, 'rejected')}
+                          className="rounded border border-red-600 px-2 py-0.5 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950"
+                        >
+                          Reject
+                        </button>
+                      </>
+                    ) : (
+                      <span
+                        className={`text-xs font-medium ${
+                          status === 'approved'
+                            ? 'text-green-700 dark:text-green-400'
+                            : status === 'rejected'
+                              ? 'text-red-700 dark:text-red-400'
+                              : 'text-neutral-500'
+                        }`}
+                      >
+                        {status}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <DiffView diff={block.diff} />
               </div>

@@ -92,3 +92,19 @@ export function subscribeToAttempt(attemptId: string): EventSource {
     withCredentials: true,
   });
 }
+
+export type ReviewStatus = 'pending' | 'approved' | 'rejected';
+
+/** Approve or reject a `file_edit` event — Phase 3's diff-review UI. */
+export async function reviewFileEdit(
+  attemptId: string,
+  eventId: string,
+  status: Extract<ReviewStatus, 'approved' | 'rejected'>,
+): Promise<boolean> {
+  const response = await apiFetch(`/attempts/${attemptId}/events/${eventId}/review`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  return response.ok;
+}

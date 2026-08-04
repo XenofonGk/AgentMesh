@@ -12,10 +12,22 @@ import type { AgentEvent } from '@agentmesh/core';
 import type { Database } from './client.js';
 import { agentEvents } from './schema.js';
 
+export type EventReviewStatus = 'pending' | 'approved' | 'rejected';
+
 export interface StoredAgentEvent {
   /** Monotonic within an attempt — see schema.ts. What SSE resume cursors are made of. */
   id: bigint;
   event: AgentEvent;
+  /** Diff review state — see schema.ts's comment on `agentEvents.reviewStatus`. */
+  reviewStatus: EventReviewStatus;
+}
+
+export interface ReviewedEvent {
+  id: bigint;
+  attemptId: string;
+  reviewStatus: EventReviewStatus;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
 }
 
 export async function appendEvent(db: Database, event: AgentEvent): Promise<void> {
@@ -38,7 +50,11 @@ export async function listEventsAfter(
   afterId?: bigint,
 ): Promise<StoredAgentEvent[]> {
   const rows = await db
-    .select({ id: agentEvents.id, payload: agentEvents.payload })
+    .select({
+      id: agentEvents.id,
+      payload: agentEvents.payload,
+      reviewStatus: agentEvents.reviewStatus,
+    })
     .from(agentEvents)
     .where(
       afterId === undefined
@@ -47,5 +63,46 @@ export async function listEventsAfter(
     )
     .orderBy(asc(agentEvents.id));
 
-  return rows.map((row) => ({ id: row.id, event: row.payload as AgentEvent }));
+  return rows.map((row) => ({
+    id: row.id,
+    event: row.payload as AgentEvent,
+    reviewStatus: row.reviewStatus,
+  }));
+}
+
+/**
+ * Sets the review verdict for one `file_edit` event — the write side of the diff-review
+ * UI (PLAN.md §5 Phase 3). Scoped to `type = 'file_edit'`: approving/rejecting anything
+ * else is meaningless, and checking it here (not just in the route) means a caller that
+ * skips the route's own guard still can't corrupt a non-diff event's row. Returns `null`
+ * if the event doesn't exist, isn't a `file_edit`, or belongs to a different attempt
+ * than the caller asserted — the route turns any of those into a 404, never leaking
+ * which case it was.
+ */
+export async function setEventReviewStatus(
+  db: Database,
+  eventId: bigint,
+  attemptId: string,
+  status: Exclude<EventReviewStatus, 'pending'>,
+  reviewedBy: string,
+): Promise<ReviewedEvent | null> {
+  const [row] = await db
+    .update(agentEvents)
+    .set({ reviewStatus: status, reviewedBy, reviewedAt: new Date() })
+    .where(
+      and(
+        eq(agentEvents.id, eventId),
+        eq(agentEvents.attemptId, attemptId),
+        eq(agentEvents.type, 'file_edit'),
+      ),
+    )
+    .returning({
+      id: agentEvents.id,
+      attemptId: agentEvents.attemptId,
+      reviewStatus: agentEvents.reviewStatus,
+      reviewedBy: agentEvents.reviewedBy,
+      reviewedAt: agentEvents.reviewedAt,
+    });
+
+  return row ?? null;
 }

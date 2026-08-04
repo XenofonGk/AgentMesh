@@ -355,6 +355,12 @@ export const runGrants = pgTable(
  * range scan instead of a timestamp comparison that ties in whenever two events share a
  * millisecond.
  */
+export const eventReviewStatus = pgEnum('event_review_status', [
+  'pending',
+  'approved',
+  'rejected',
+]);
+
 export const agentEvents = pgTable(
   'agent_events',
   {
@@ -365,6 +371,19 @@ export const agentEvents = pgTable(
     type: text('type').notNull(),
     /** The full `AgentEvent`, exactly as the adapter emitted it. */
     payload: jsonb('payload').notNull(),
+    /**
+     * Diff review (PLAN.md §5 Phase 3). Lives on the event row rather than a parallel
+     * table: a `file_edit` event *is* the reviewable unit, one row already exists per
+     * event, and a second table keyed by event id would only ever hold a 1:1 sidecar of
+     * these three columns. Meaningless for the other six variants — left `'pending'` and
+     * ignored by everything that isn't the diff-review UI. Deliberately absent from
+     * `AgentEvent` itself (`packages/core`): CLAUDE.md says that type is never widened
+     * locally, and review state is API/DB metadata about an event, not part of what an
+     * adapter emitted.
+     */
+    reviewStatus: eventReviewStatus('review_status').notNull().default('pending'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+    reviewedAt: timestamptz('reviewed_at'),
     createdAt: timestamptz('created_at')
       .notNull()
       .default(sql`now()`),
