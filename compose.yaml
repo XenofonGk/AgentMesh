@@ -118,8 +118,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      # Not service_healthy: proxy's healthcheck can't pass until the vault_canary row
+      # exists, and that row is only created by the migrations api itself runs at boot
+      # (see apps/proxy/src/main.ts's doc comment — proxy assumes api has already
+      # migrated, it never does so itself). Waiting on proxy's health here would
+      # deadlock a fresh database: proxy can't become healthy until api has run, and
+      # api can't run until proxy is healthy. service_started only waits for the
+      # container to launch; proxy's own `restart: unless-stopped` picks it back up
+      # once api's migration creates the table it needs.
       proxy:
-        condition: service_healthy
+        condition: service_started
       broker:
         condition: service_healthy
     networks: [internal]
