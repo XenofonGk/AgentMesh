@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import { me, startRun } from '../lib/api';
 
 /**
- * Only `claude` is selectable: it's the only provider with a real adapter
- * (`packages/adapters/src/claude`) — see PLAN.md Phase 3 for the rest.
+ * Only providers with a real adapter (`packages/adapters/src`) are selectable — see
+ * PLAN.md Phase 3 for the rest. `gemini` is not agentic (see its adapter's own doc
+ * comment): it streams a plain response, it does not edit files or run tools.
  */
-const AVAILABLE_PROVIDERS = ['claude'];
+const AVAILABLE_PROVIDERS = ['claude', 'gemini'];
 
 export default function HomePage(): React.JSX.Element | null {
   const router = useRouter();
