@@ -94,6 +94,8 @@ describeDb('Orchestrator', () => {
         'AGENTMESH_PROXY_URL',
         'AGENTMESH_API_URL',
         'AGENTMESH_ATTEMPT_ID',
+        'AGENTMESH_PROVIDER',
+        'AGENTMESH_TASK',
       ]);
       const token = record.spec.env['AGENTMESH_RUN_TOKEN']!;
       const grant = await resolveRunToken(handle.db, token);
