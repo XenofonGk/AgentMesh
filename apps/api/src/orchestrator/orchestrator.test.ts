@@ -134,6 +134,66 @@ describeDb('Orchestrator', () => {
     expect(row?.completedAt).not.toBeNull();
   });
 
+  it('persists usage from a done event onto the attempt row', async () => {
+    const userId = await freshUser();
+    const sandbox = new FakeSandboxProvider();
+    const orchestrator = new Orchestrator(handle.db, sandbox);
+
+    const { attemptIds } = await orchestrator.startRun({
+      userId,
+      task: 'do the thing',
+      proxyUrl: 'http://proxy:3002',
+      apiUrl: 'http://api:3001',
+      attempts: [
+        { provider: 'deepseek', image: 'agentmesh/deepseek:latest', command: ['run'] },
+      ],
+    });
+    const attemptId = attemptIds[0]!;
+
+    await orchestrator.finishAttempt(attemptId, {
+      status: 'succeeded',
+      usage: { inputTokens: 12, outputTokens: 34, costUsd: 0.0056, latencyMs: 2200 },
+    });
+
+    const [row] = await handle.db
+      .select()
+      .from(attempts)
+      .where(eq(attempts.id, attemptId));
+    expect(row?.inputTokens).toBe(12);
+    expect(row?.outputTokens).toBe(34);
+    expect(row?.costUsd).toBe('0.005600');
+    expect(row?.latencyMs).toBe(2200);
+  });
+
+  it('falls back to container-lifecycle latency when the adapter reports none', async () => {
+    const userId = await freshUser();
+    const sandbox = new FakeSandboxProvider();
+    const orchestrator = new Orchestrator(handle.db, sandbox);
+
+    const { attemptIds } = await orchestrator.startRun({
+      userId,
+      task: 'do the thing',
+      proxyUrl: 'http://proxy:3002',
+      apiUrl: 'http://api:3001',
+      attempts: [
+        { provider: 'gemini', image: 'agentmesh/gemini:latest', command: ['run'] },
+      ],
+    });
+    const attemptId = attemptIds[0]!;
+
+    await orchestrator.finishAttempt(attemptId, {
+      status: 'succeeded',
+      usage: { inputTokens: null, outputTokens: null, costUsd: null, latencyMs: null },
+    });
+
+    const [row] = await handle.db
+      .select()
+      .from(attempts)
+      .where(eq(attempts.id, attemptId));
+    expect(row?.latencyMs).not.toBeNull();
+    expect(row?.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
   it('finishAttempt is idempotent — a second call cannot clobber the first outcome', async () => {
     const userId = await freshUser();
     const sandbox = new FakeSandboxProvider();
