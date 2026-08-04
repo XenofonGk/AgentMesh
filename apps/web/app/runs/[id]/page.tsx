@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import type { AgentEvent } from '@agentmesh/core';
+import type { AgentEvent, Usage } from '@agentmesh/core';
 import { getRun, me, subscribeToAttempt, type RunDetail } from '../../../lib/api';
 
 /**
@@ -75,7 +75,20 @@ function reduceEvents(events: AgentEvent[]): Block[] {
   return blocks;
 }
 
-function AttemptPanel({ attemptId, provider }: { attemptId: string; provider: string }) {
+interface AttemptResult {
+  outcome: string;
+  usage: Usage | null;
+}
+
+function AttemptPanel({
+  attemptId,
+  provider,
+  onDone,
+}: {
+  attemptId: string;
+  provider: string;
+  onDone: (attemptId: string, result: AttemptResult) => void;
+}) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
 
   useEffect(() => {
@@ -83,11 +96,14 @@ function AttemptPanel({ attemptId, provider }: { attemptId: string; provider: st
     source.onmessage = (message) => {
       const event = JSON.parse(message.data as string) as AgentEvent;
       setEvents((current) => [...current, event]);
+      if (event.type === 'done') {
+        onDone(attemptId, { outcome: event.outcome, usage: event.usage });
+      }
     };
     return () => {
       source.close();
     };
-  }, [attemptId]);
+  }, [attemptId, onDone]);
 
   const blocks = reduceEvents(events);
   const done = events.find(
@@ -138,11 +154,84 @@ function AttemptPanel({ attemptId, provider }: { attemptId: string; provider: st
   );
 }
 
+function formatCost(costUsd: number | null): string {
+  return costUsd === null ? '—' : `$${costUsd.toFixed(4)}`;
+}
+
+function formatLatency(latencyMs: number | null): string {
+  return latencyMs === null ? '—' : `${(latencyMs / 1000).toFixed(1)}s`;
+}
+
+function formatTokens(tokens: number | null): string {
+  return tokens === null ? '—' : tokens.toLocaleString();
+}
+
+/**
+ * The whole point of the bake-off: put every attempt's cost/latency/tokens/outcome in
+ * one table so they're comparable at a glance, not scattered across N scrolling panels.
+ * Sourced from live `done` events (via `onDone`, below), not the initial `getRun` —
+ * that snapshot is taken before any attempt has finished and would show stale nulls for
+ * the whole run.
+ */
+function ComparisonTable({
+  attempts,
+  results,
+}: {
+  attempts: RunDetail['attempts'];
+  results: Record<string, AttemptResult>;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+      <table className="w-full text-left text-sm">
+        <thead>
+          <tr className="border-b border-neutral-200 text-xs text-neutral-500 dark:border-neutral-800">
+            <th className="px-4 py-2 font-medium">Provider</th>
+            <th className="px-4 py-2 font-medium">Outcome</th>
+            <th className="px-4 py-2 font-medium">Cost</th>
+            <th className="px-4 py-2 font-medium">Latency</th>
+            <th className="px-4 py-2 font-medium">Input tokens</th>
+            <th className="px-4 py-2 font-medium">Output tokens</th>
+          </tr>
+        </thead>
+        <tbody>
+          {attempts.map((attempt) => {
+            const result = results[attempt.id];
+            return (
+              <tr
+                key={attempt.id}
+                className="border-b border-neutral-200 last:border-0 dark:border-neutral-800"
+              >
+                <td className="px-4 py-2 font-medium">{attempt.provider}</td>
+                <td className="px-4 py-2 text-neutral-500">
+                  {result?.outcome ?? 'running…'}
+                </td>
+                <td className="px-4 py-2">
+                  {formatCost(result?.usage?.costUsd ?? null)}
+                </td>
+                <td className="px-4 py-2">
+                  {formatLatency(result?.usage?.latencyMs ?? null)}
+                </td>
+                <td className="px-4 py-2">
+                  {formatTokens(result?.usage?.inputTokens ?? null)}
+                </td>
+                <td className="px-4 py-2">
+                  {formatTokens(result?.usage?.outputTokens ?? null)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function RunPage(): React.JSX.Element | null {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [results, setResults] = useState<Record<string, AttemptResult>>({});
 
   useEffect(() => {
     void me().then((user) => {
@@ -159,6 +248,10 @@ export default function RunPage(): React.JSX.Element | null {
     void getRun(params.id).then(setRun);
   }, [authChecked, params.id]);
 
+  const handleDone = useCallback((attemptId: string, result: AttemptResult): void => {
+    setResults((current) => ({ ...current, [attemptId]: result }));
+  }, []);
+
   if (!authChecked) return null;
   if (!run) return <main className="p-6">Loading…</main>;
 
@@ -170,12 +263,14 @@ export default function RunPage(): React.JSX.Element | null {
           {run.status} · started {new Date(run.createdAt).toLocaleString()}
         </p>
       </div>
+      <ComparisonTable attempts={run.attempts} results={results} />
       <div className="flex min-h-0 flex-1 gap-4">
         {run.attempts.map((attempt) => (
           <AttemptPanel
             key={attempt.id}
             attemptId={attempt.id}
             provider={attempt.provider}
+            onDone={handleDone}
           />
         ))}
       </div>
