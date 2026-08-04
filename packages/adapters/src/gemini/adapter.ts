@@ -92,6 +92,9 @@ export const geminiAdapter: ModelAdapter = {
           },
           body: JSON.stringify({
             contents: [{ role: 'user', parts: [{ text: input.task }] }],
+            ...(input.systemPrompt && {
+              systemInstruction: { parts: [{ text: input.systemPrompt }] },
+            }),
           }),
           ...(ctx.signal && { signal: ctx.signal }),
         },

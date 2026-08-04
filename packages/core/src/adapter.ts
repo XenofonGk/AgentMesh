@@ -10,6 +10,17 @@ export interface RunInput {
   task: string;
   maxTurns?: number;
   maxBudgetUsd?: number;
+  /**
+   * The inline half of skill delivery (`@agentmesh/skills`'s `resolveSkillDelivery`,
+   * `mode: 'inline'`) — non-agentic adapters fold this into whatever "system" concept
+   * their wire format has. Absent, not `''`, when there is nothing to inject: an
+   * adapter should be able to tell "no skills selected" apart from "skills selected but
+   * empty" without inspecting string length. `claudeAdapter` ignores this entirely —
+   * Claude's half of the same delivery is files mounted into `.claude/skills/` before
+   * the subprocess starts (see the runner's `main.ts`), which Claude discovers on its
+   * own; there is no separate system-prompt channel to also thread it through.
+   */
+  systemPrompt?: string;
 }
 
 /**

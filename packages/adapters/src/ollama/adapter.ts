@@ -147,7 +147,12 @@ export const ollamaAdapter: ModelAdapter = {
         },
         body: JSON.stringify({
           model: DEFAULT_MODEL,
-          messages: [{ role: 'user', content: input.task }],
+          messages: [
+            ...(input.systemPrompt
+              ? [{ role: 'system', content: input.systemPrompt }]
+              : []),
+            { role: 'user', content: input.task },
+          ],
           stream: true,
         }),
         ...(ctx.signal && { signal: ctx.signal }),
