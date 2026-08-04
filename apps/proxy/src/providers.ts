@@ -26,11 +26,16 @@ export interface ProviderRoute {
 }
 
 /**
- * Anthropic only, deliberately. Generalizing the shape of "a provider route" from one
- * data point — before a second provider exists to prove the shape wrong — is exactly
- * the premature abstraction this codebase's conventions warn against. `/v1/messages` is
- * the one endpoint the Claude Agent SDK's Messages API calls; widen this table when a
- * second endpoint or a second provider actually needs it, not before.
+ * Anthropic and Gemini, deliberately not generalized further than these two data
+ * points prove necessary. `/v1/messages` is the one endpoint the Claude Agent SDK's
+ * Messages API calls. Gemini's path bakes in one fixed model
+ * (`gemini-2.0-flash:generateContent`, not the streaming variant — see the adapter's
+ * own doc comment for why) rather than a family of model paths — same reasoning as
+ * Claude's single path: widen this when a second model or endpoint actually needs it,
+ * not before. `x-goog-api-key` is Google's own documented header for the Generative
+ * Language API, so the run token travels there the same way it travels in `x-api-key`
+ * for Claude — see `packages/adapters/src/claude/adapter.ts`'s module doc for why the
+ * run token has to occupy the real auth header at all.
  */
 export const DEFAULT_PROVIDER_ROUTES: readonly ProviderRoute[] = [
   {
@@ -38,6 +43,12 @@ export const DEFAULT_PROVIDER_ROUTES: readonly ProviderRoute[] = [
     origin: 'https://api.anthropic.com',
     paths: new Set(['/v1/messages']),
     authHeader: 'x-api-key',
+  },
+  {
+    provider: 'gemini',
+    origin: 'https://generativelanguage.googleapis.com',
+    paths: new Set(['/v1beta/models/gemini-2.0-flash:generateContent']),
+    authHeader: 'x-goog-api-key',
   },
 ];
 

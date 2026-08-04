@@ -38,8 +38,20 @@ describe('resolveProviderRoute', () => {
     );
   });
 
+  it('resolves gemini on its own fixed model path', () => {
+    const route = resolveProviderRoute(
+      'gemini',
+      '/v1beta/models/gemini-2.0-flash:generateContent',
+    );
+    expect(route?.origin).toBe('https://generativelanguage.googleapis.com');
+    expect(route?.authHeader).toBe('x-goog-api-key');
+  });
+
   it('ships with exactly the routes documented, so an addition here is deliberate', () => {
-    expect(DEFAULT_PROVIDER_ROUTES).toHaveLength(1);
-    expect(DEFAULT_PROVIDER_ROUTES[0]!.provider).toBe('claude');
+    expect(DEFAULT_PROVIDER_ROUTES).toHaveLength(2);
+    expect(DEFAULT_PROVIDER_ROUTES.map((route) => route.provider)).toEqual([
+      'claude',
+      'gemini',
+    ]);
   });
 });
