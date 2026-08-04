@@ -1,7 +1,11 @@
 /**
- * Skill loader, validator, and eval harness for the Agent Skills standard.
+ * Skill loader, validator, and cross-provider delivery for the Agent Skills standard.
  *
- * Empty at Phase 0 by design — this is Phase 4 work (PLAN.md §5).
+ * Phase 4 (PLAN.md §5). Eval harness and improvement loop are Phase 5 — not here yet.
  */
-
-export {};
+export { SkillFrontmatterSchema, SkillNameSchema, SkillDescriptionSchema } from './schema.js';
+export type { Skill, SkillFrontmatter } from './schema.js';
+export { parseSkillMarkdown, loadSkill, loadSkillsFromDir } from './loader.js';
+export type { SkillValidationError } from './loader.js';
+export { resolveSkillDelivery, CLAUDE_SKILLS_DIR } from './delivery.js';
+export type { SkillDelivery, MountedSkillFile } from './delivery.js';
