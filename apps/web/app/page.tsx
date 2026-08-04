@@ -19,15 +19,20 @@ export default function HomePage(): React.JSX.Element | null {
   const [providers, setProviders] = useState<string[]>(['claude']);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    void me().then((user) => {
-      if (!user) {
-        router.replace('/login');
-        return;
-      }
-      setAuthChecked(true);
-    });
+    void me()
+      .then((user) => {
+        if (!user) {
+          router.replace('/login');
+          return;
+        }
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        setAuthError('Could not reach the API. Is it running?');
+      });
   }, [router]);
 
   function toggleProvider(provider: string): void {
@@ -53,6 +58,14 @@ export default function HomePage(): React.JSX.Element | null {
       setError('Failed to start the run.');
       setSubmitting(false);
     }
+  }
+
+  if (authError) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-2 px-6 text-center">
+        <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>
+      </main>
+    );
   }
 
   if (!authChecked) return null;
