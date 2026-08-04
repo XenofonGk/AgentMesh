@@ -48,6 +48,21 @@ export class DockerSandboxProvider implements SandboxProvider {
         SecurityOpt: ['no-new-privileges'],
         NanoCpus: Math.round(spec.resources.cpus * 1_000_000_000),
         Memory: spec.resources.memoryMb * 1024 * 1024,
+        // CapDrop alone does not stop two things modern kernels allow any UID to do
+        // without capabilities, both namespaced sysctls that default to "allow
+        // everyone" on many distros — so both have to be pinned closed per-container
+        // rather than trusted as a host default:
+        //   - ping_group_range: opens an unprivileged ICMP "ping socket" without
+        //     CAP_NET_RAW.
+        //   - ip_unprivileged_port_start: lets a non-root UID bind ports below 1024
+        //     without CAP_NET_BIND_SERVICE.
+        // Both confirmed live by docker-sandbox-provider.smoke.ts, which found `ping`
+        // and binding port 80 both succeeding under CapDrop: ['ALL'] + User: '1000:1000'
+        // before this was added.
+        Sysctls: {
+          'net.ipv4.ping_group_range': '0 0',
+          'net.ipv4.ip_unprivileged_port_start': '1024',
+        },
         // Wall-clock enforcement lives in the orchestrator (setTimeout -> destroy), not
         // here — Docker has no native "kill after N ms" primitive to delegate to.
       },
