@@ -67,6 +67,19 @@ importers:
       '@agentmesh/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@agentmesh/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      fastify:
+        specifier: ^5.11.2
+        version: 5.11.2
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      tsx:
+        specifier: ^4.20.6
+        version: 4.23.5
 
   apps/web:
     dependencies:
