@@ -69,6 +69,7 @@ export class Orchestrator {
       const attemptId = await this.startAttempt(
         run.id,
         options.userId,
+        options.task,
         options.proxyUrl,
         options.apiUrl,
         attemptImage,
@@ -82,6 +83,7 @@ export class Orchestrator {
   private async startAttempt(
     runId: string,
     userId: string,
+    task: string,
     proxyUrl: string,
     apiUrl: string,
     attemptImage: AttemptImage,
@@ -110,6 +112,8 @@ export class Orchestrator {
           AGENTMESH_PROXY_URL: proxyUrl,
           AGENTMESH_API_URL: apiUrl,
           AGENTMESH_ATTEMPT_ID: attempt.id,
+          AGENTMESH_PROVIDER: attemptImage.provider,
+          AGENTMESH_TASK: task,
         },
         networks: [RUNNER_NETWORK],
         resources: { cpus: 1, memoryMb: 2048 },
