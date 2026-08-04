@@ -39,10 +39,36 @@ interface ToolBlock {
   isError?: boolean;
 }
 interface NoteBlock {
-  kind: 'thinking' | 'file_edit' | 'error' | 'done';
+  kind: 'thinking' | 'error' | 'done';
   detail: string;
 }
-type Block = TextBlock | ToolBlock | NoteBlock;
+interface FileEditBlock {
+  kind: 'file_edit';
+  path: string;
+  diff: string;
+}
+type Block = TextBlock | ToolBlock | NoteBlock | FileEditBlock;
+
+function DiffView({ diff }: { diff: string }) {
+  return (
+    <pre className="overflow-x-auto text-xs leading-relaxed">
+      {diff.split('\n').map((line, index) => {
+        const color = line.startsWith('+') && !line.startsWith('+++')
+          ? 'bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-400'
+          : line.startsWith('-') && !line.startsWith('---')
+            ? 'bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-400'
+            : line.startsWith('@@')
+              ? 'text-blue-600 dark:text-blue-400'
+              : '';
+        return (
+          <div key={index} className={`px-2 ${color}`}>
+            {line || ' '}
+          </div>
+        );
+      })}
+    </pre>
+  );
+}
 
 function reduceEvents(events: AgentEvent[]): Block[] {
   const blocks: Block[] = [];
@@ -74,7 +100,7 @@ function reduceEvents(events: AgentEvent[]): Block[] {
         break;
       }
       case 'file_edit':
-        blocks.push({ kind: 'file_edit', detail: event.path });
+        blocks.push({ kind: 'file_edit', path: event.path, diff: event.diff });
         break;
       case 'thinking':
         blocks.push({ kind: 'thinking', detail: event.text });
@@ -143,6 +169,19 @@ function AttemptPanel({ attempt }: { attempt: AttemptSummary }) {
                 {block.name}({JSON.stringify(block.input)})
                 {block.output !== undefined ? ` → ${JSON.stringify(block.output)}` : ''}
               </pre>
+            );
+          }
+          if (block.kind === 'file_edit') {
+            return (
+              <div
+                key={index}
+                className="mb-3 overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-800"
+              >
+                <div className="border-b border-neutral-200 bg-neutral-50 px-2 py-1 font-mono text-xs dark:border-neutral-800 dark:bg-neutral-900">
+                  {block.path}
+                </div>
+                <DiffView diff={block.diff} />
+              </div>
             );
           }
           return (
