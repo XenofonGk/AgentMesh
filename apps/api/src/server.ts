@@ -2,14 +2,21 @@ import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import { redact } from '@agentmesh/core';
-import { createDatabase, type DatabaseHandle } from '@agentmesh/db';
+import { createDatabase, type DatabaseHandle, type Vault } from '@agentmesh/db';
 import type { Config } from './config.js';
 import { registerAuthRoutes } from './auth/routes.js';
+import { registerCredentialRoutes } from './credentials/routes.js';
 
 export interface BuildOptions {
   config: Config;
   /** Injectable so tests can run without a live Postgres. */
   database?: DatabaseHandle;
+  /**
+   * Optional so `server.test.ts`'s liveness/readiness checks don't need a real vault.
+   * Required in practice: omitting it just means the credential routes never register,
+   * which routes.test.ts (real Postgres, real Vault) exercises to catch.
+   */
+  vault?: Vault;
 }
 
 export interface App {
@@ -17,7 +24,11 @@ export interface App {
   database: DatabaseHandle;
 }
 
-export async function buildServer({ config, database }: BuildOptions): Promise<App> {
+export async function buildServer({
+  config,
+  database,
+  vault,
+}: BuildOptions): Promise<App> {
   const db = database ?? createDatabase(config.DATABASE_URL);
 
   const server = Fastify({
@@ -45,6 +56,9 @@ export async function buildServer({ config, database }: BuildOptions): Promise<A
   await server.register(cookie);
 
   await registerAuthRoutes(server, db.db, config.NODE_ENV);
+  if (vault !== undefined) {
+    await registerCredentialRoutes(server, db.db, vault);
+  }
 
   /** Liveness: is the process up? Never touches the database. */
   server.get('/health', () => ({ status: 'ok' as const }));

@@ -223,6 +223,70 @@ describeDb('Vault', () => {
       .where(eq(credentials.userId, userId));
     expect(row!.lastUsedAt).toBeInstanceOf(Date);
   });
+
+  it('lists credential metadata without ever returning ciphertext', async () => {
+    const { vault } = await freshVault();
+    const userId = await freshUser();
+    await vault.putCredential(userId, 'claude', Buffer.from('sk-ant-fake'));
+    await vault.putCredential(userId, 'gemini', Buffer.from('gm-fake'));
+
+    const list = await vault.listCredentials(userId);
+    expect(list).toHaveLength(2);
+    expect(list.map((c) => c.provider).sort()).toEqual(['claude', 'gemini']);
+    // The point of the test: nothing in the summary can be decrypted or is ciphertext.
+    for (const entry of list) {
+      expect(Object.keys(entry).sort()).toEqual([
+        'createdAt',
+        'keyVersion',
+        'lastUsedAt',
+        'provider',
+        'updatedAt',
+      ]);
+    }
+  });
+
+  it("does not list another user's credentials", async () => {
+    const { vault } = await freshVault();
+    const userId = await freshUser();
+    const otherUserId = await freshUser();
+    await vault.putCredential(otherUserId, 'claude', Buffer.from('sk-ant-not-yours'));
+
+    expect(await vault.listCredentials(userId)).toEqual([]);
+  });
+
+  it('deletes a credential', async () => {
+    const { vault } = await freshVault();
+    const userId = await freshUser();
+    await vault.putCredential(userId, 'claude', Buffer.from('sk-ant-fake'));
+
+    const result = await vault.deleteCredential(userId, 'claude');
+    expect(result.ok).toBe(true);
+    expect(await vault.listCredentials(userId)).toEqual([]);
+  });
+
+  it('reports not_found when deleting a credential that does not exist', async () => {
+    const { vault } = await freshVault();
+    const userId = await freshUser();
+
+    const result = await vault.deleteCredential(userId, 'claude');
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error.kind).toBe('not_found');
+  });
+
+  it("cannot delete another user's credential", async () => {
+    const { vault } = await freshVault();
+    const victim = await freshUser();
+    const attacker = await freshUser();
+    await vault.putCredential(victim, 'claude', Buffer.from('sk-ant-victim'));
+
+    const result = await vault.deleteCredential(attacker, 'claude');
+    expect(result.ok).toBe(false);
+
+    const stillThere = await vault.useCredential(victim, 'claude', async (p) =>
+      p.toString('utf8'),
+    );
+    expect(stillThere.ok && stillThere.value).toBe('sk-ant-victim');
+  });
 });
 
 describeDb('Vault boot check', () => {
