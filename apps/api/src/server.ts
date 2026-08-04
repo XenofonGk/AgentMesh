@@ -9,6 +9,7 @@ import { registerAuthRoutes } from './auth/routes.js';
 import { registerCredentialRoutes } from './credentials/routes.js';
 import { registerOrchestratorRoutes } from './orchestrator/routes.js';
 import { Orchestrator } from './orchestrator/orchestrator.js';
+import { registerEventRoutes } from './events/routes.js';
 
 export interface BuildOptions {
   config: Config;
@@ -70,8 +71,15 @@ export async function buildServer({
   }
   if (sandbox !== undefined) {
     const orchestrator = new Orchestrator(db.db, sandbox);
-    await registerOrchestratorRoutes(server, db.db, orchestrator, config.PROXY_URL);
+    await registerOrchestratorRoutes(
+      server,
+      db.db,
+      orchestrator,
+      config.PROXY_URL,
+      config.API_URL,
+    );
   }
+  await registerEventRoutes(server, db.db);
 
   /** Liveness: is the process up? Never touches the database. */
   server.get('/health', () => ({ status: 'ok' as const }));

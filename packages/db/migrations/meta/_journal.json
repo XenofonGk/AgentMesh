@@ -15,6 +15,13 @@
       "when": 1785832999216,
       "tag": "0001_orchestrator_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785849694265,
+      "tag": "0002_agent_events",
+      "breakpoints": true
     }
   ]
 }

@@ -130,6 +130,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       PROXY_URL: http://proxy:3002
+      API_URL: http://api:3001
       BROKER_URL: http://broker:3003
       DATABASE_URL: postgres://${POSTGRES_USER:-agentmesh}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agentmesh}
       # Required. The API refuses to start without a valid 32-byte key, and refuses to
