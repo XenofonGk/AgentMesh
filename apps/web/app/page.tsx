@@ -6,11 +6,11 @@ import { me, startRun } from '../lib/api';
 
 /**
  * Only providers with a real adapter (`packages/adapters/src`) are selectable — see
- * PLAN.md Phase 3 for the rest. `gemini` and `deepseek` are not agentic (see each
- * adapter's own doc comment): they stream a plain response, neither edits files or
+ * PLAN.md Phase 3 for the rest. `gemini`, `deepseek`, and `grok` are not agentic (see
+ * each adapter's own doc comment): they stream a plain response, neither edits files or
  * runs tools.
  */
-const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek'];
+const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek', 'grok'];
 
 export default function HomePage(): React.JSX.Element | null {
   const router = useRouter();

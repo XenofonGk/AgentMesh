@@ -54,12 +54,20 @@ describe('resolveProviderRoute', () => {
     expect(route?.authValuePrefix).toBe('Bearer ');
   });
 
+  it('resolves grok with a Bearer auth value prefix', () => {
+    const route = resolveProviderRoute('grok', '/v1/chat/completions');
+    expect(route?.origin).toBe('https://api.x.ai');
+    expect(route?.authHeader).toBe('authorization');
+    expect(route?.authValuePrefix).toBe('Bearer ');
+  });
+
   it('ships with exactly the routes documented, so an addition here is deliberate', () => {
-    expect(DEFAULT_PROVIDER_ROUTES).toHaveLength(3);
+    expect(DEFAULT_PROVIDER_ROUTES).toHaveLength(4);
     expect(DEFAULT_PROVIDER_ROUTES.map((route) => route.provider)).toEqual([
       'claude',
       'gemini',
       'deepseek',
+      'grok',
     ]);
   });
 });

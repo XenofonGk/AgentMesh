@@ -8,3 +8,4 @@
 export { claudeAdapter, CLAUDE_CAPABILITIES } from './claude/adapter.js';
 export { geminiAdapter, GEMINI_CAPABILITIES } from './gemini/adapter.js';
 export { deepseekAdapter, DEEPSEEK_CAPABILITIES } from './deepseek/adapter.js';
+export { grokAdapter, GROK_CAPABILITIES } from './grok/adapter.js';
