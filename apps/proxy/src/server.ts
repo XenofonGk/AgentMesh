@@ -9,7 +9,7 @@
  *                                                      also decides which header the run
  *                                                      token below travels in)
  *   2. Resolve the run token → grant, read out of
- *      route.authHeader                               (never trust a provider/user the
+ *      route.authHeader, minus any authValuePrefix     (never trust a provider/user the
  *      (packages/db/src/run-grants.ts)                runner claims directly — see the
  *                                                      module doc on headers.ts for why
  *                                                      it's this header, not a bespoke one)
@@ -99,8 +99,17 @@ export async function buildProxyServer({
       return reply.code(404).send({ error: 'unknown_route' });
     }
 
-    const token = request.headers[route.authHeader];
-    if (typeof token !== 'string' || token === '') {
+    // A prefix (`authValuePrefix`, e.g. `'Bearer '`) is part of how the header is
+    // *formatted*, not part of the token — it has to come off before the value is
+    // looked up as one, the same way it goes back on before the real secret is
+    // injected below.
+    const rawHeader = request.headers[route.authHeader];
+    const prefix = route.authValuePrefix ?? '';
+    const token =
+      typeof rawHeader === 'string' && rawHeader.startsWith(prefix)
+        ? rawHeader.slice(prefix.length)
+        : undefined;
+    if (token === undefined || token === '') {
       return reply.code(401).send({ error: 'missing_run_token' });
     }
 
@@ -124,7 +133,7 @@ export async function buildProxyServer({
         // string" (crypto.ts, SECURITY.md → Zeroization): fetch's Headers only accept
         // strings. This copy is scoped to this callback and never returned, logged, or
         // stored — best-effort, same caveat as everywhere else a secret meets a string.
-        outboundHeaders[route.authHeader] = secret.toString('utf8');
+        outboundHeaders[route.authHeader] = prefix + secret.toString('utf8');
 
         const init: RequestInit = { method: request.method, headers: outboundHeaders };
         if (body.length > 0) init.body = body;

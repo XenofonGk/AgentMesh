@@ -47,11 +47,19 @@ describe('resolveProviderRoute', () => {
     expect(route?.authHeader).toBe('x-goog-api-key');
   });
 
+  it('resolves deepseek with a Bearer auth value prefix', () => {
+    const route = resolveProviderRoute('deepseek', '/chat/completions');
+    expect(route?.origin).toBe('https://api.deepseek.com');
+    expect(route?.authHeader).toBe('authorization');
+    expect(route?.authValuePrefix).toBe('Bearer ');
+  });
+
   it('ships with exactly the routes documented, so an addition here is deliberate', () => {
-    expect(DEFAULT_PROVIDER_ROUTES).toHaveLength(2);
+    expect(DEFAULT_PROVIDER_ROUTES).toHaveLength(3);
     expect(DEFAULT_PROVIDER_ROUTES.map((route) => route.provider)).toEqual([
       'claude',
       'gemini',
+      'deepseek',
     ]);
   });
 });
