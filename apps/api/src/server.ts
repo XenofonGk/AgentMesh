@@ -80,7 +80,7 @@ export async function buildServer({
       config.API_URL,
     );
   }
-  await registerEventRoutes(server, db.db, orchestrator);
+  await registerEventRoutes(server, db.db, config.WEB_ORIGIN, orchestrator);
 
   /** Liveness: is the process up? Never touches the database. */
   server.get('/health', () => ({ status: 'ok' as const }));

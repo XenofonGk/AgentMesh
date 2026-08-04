@@ -68,6 +68,7 @@ const RUN_TOKEN_HEADER = 'x-agentmesh-run-token';
 export async function registerEventRoutes(
   server: FastifyInstance,
   db: Database,
+  webOrigin: string,
   orchestrator?: Orchestrator,
 ): Promise<void> {
   server.post('/internal/attempts/:id/events', async (request, reply) => {
@@ -128,10 +129,17 @@ export async function registerEventRoutes(
         return reply.code(404).send({ error: 'not_found' });
       }
 
+      // Writing straight to `reply.raw` bypasses Fastify's own reply pipeline —
+      // `@fastify/cors`'s hook runs on `onSend`, which a raw response never triggers,
+      // so its headers have to be set by hand here or the browser blocks the response
+      // outright (an `EventSource` with `withCredentials: true` requires an explicit
+      // origin, never `*`, plus `Access-Control-Allow-Credentials`).
       reply.raw.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
         connection: 'keep-alive',
+        'access-control-allow-origin': webOrigin,
+        'access-control-allow-credentials': 'true',
       });
 
       const write = (id: bigint | null, event: AgentEvent): void => {
