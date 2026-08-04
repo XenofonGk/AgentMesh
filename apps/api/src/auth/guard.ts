@@ -1,8 +1,8 @@
 /**
- * The session-auth guard every protected route will use from Phase 2 onward. Nothing
- * calls this yet — there are no protected routes until the vault gets an HTTP surface —
- * but it is written now, alongside login/logout, so the *shape* of "how a route asserts
- * a caller is signed in" is decided once rather than improvised per-route later.
+ * The session-auth guard every protected route uses. First consumer is
+ * `apps/api/src/credentials/routes.ts`; written alongside login/logout, ahead of that
+ * consumer, so the shape of "how a route asserts a caller is signed in" was decided
+ * once rather than improvised per route.
  */
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { Database } from '@agentmesh/db';

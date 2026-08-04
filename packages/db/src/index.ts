@@ -9,7 +9,7 @@ export {
   MasterKeyError,
   withSecret,
 } from './vault/index.js';
-export type { MasterKey, VaultFailure } from './vault/index.js';
+export type { MasterKey, VaultFailure, CredentialSummary } from './vault/index.js';
 export { wipe } from './vault/index.js';
 export {
   hashPassword,

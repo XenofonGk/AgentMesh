@@ -23,8 +23,9 @@ async function main(): Promise<void> {
   // serving with an unreadable vault means a user is shown an empty credential list and
   // re-enters their API keys on top of ciphertext nobody can recover.
   const masterKey = loadMasterKey();
+  const vault = new Vault(database.db, masterKey);
   try {
-    await new Vault(database.db, masterKey).verifyOrInitialize();
+    await vault.verifyOrInitialize();
   } catch (error) {
     await database.close();
     throw error;
@@ -50,7 +51,7 @@ async function main(): Promise<void> {
     throw error;
   }
 
-  const { server } = await buildServer({ config, database });
+  const { server } = await buildServer({ config, database, vault });
 
   const shutdown = async (signal: string): Promise<void> => {
     server.log.info({ signal }, 'shutting down');

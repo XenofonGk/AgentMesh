@@ -32,6 +32,18 @@ export type VaultFailure =
   /** Authentication failed: wrong key, moved row, or relabelled version. */
   | { kind: 'unreadable'; provider: string; keyVersion: number };
 
+/**
+ * Everything about a stored credential except the secret itself. What a "manage my
+ * credentials" UI needs to render a list — never ciphertext, never plaintext.
+ */
+export interface CredentialSummary {
+  provider: string;
+  keyVersion: number;
+  createdAt: Date;
+  updatedAt: Date;
+  lastUsedAt: Date | null;
+}
+
 export class VaultBootError extends Error {
   override readonly name = 'VaultBootError';
 }
@@ -227,5 +239,40 @@ export class Vault {
     } finally {
       wipe(dek.value.key, plaintext);
     }
+  }
+
+  /**
+   * Metadata only. The column list is explicit rather than `select()` precisely so that
+   * adding a sensitive column to `credentials` later can't silently start flowing
+   * through this method into an API response — a reviewer has to touch this line too.
+   */
+  async listCredentials(userId: string): Promise<CredentialSummary[]> {
+    return this.db
+      .select({
+        provider: credentials.provider,
+        keyVersion: credentials.keyVersion,
+        createdAt: credentials.createdAt,
+        updatedAt: credentials.updatedAt,
+        lastUsedAt: credentials.lastUsedAt,
+      })
+      .from(credentials)
+      .where(eq(credentials.userId, userId));
+  }
+
+  /**
+   * Deletes a stored credential. No decryption involved — deleting a row you cannot
+   * read is still a correct delete, so this does not go through `activeDek`.
+   */
+  async deleteCredential(
+    userId: string,
+    provider: string,
+  ): Promise<Result<void, { kind: 'not_found'; provider: string }>> {
+    const deleted = await this.db
+      .delete(credentials)
+      .where(and(eq(credentials.userId, userId), eq(credentials.provider, provider)))
+      .returning({ id: credentials.id });
+
+    if (deleted.length === 0) return err({ kind: 'not_found', provider });
+    return ok(undefined);
   }
 }
