@@ -1,9 +1,8 @@
 /**
  * Provider adapters (claude | gemini | deepseek | grok | ollama).
  *
- * Empty at Phase 0 by design: the `ModelAdapter` interface and the `AgentEvent` union
- * are Phase 2 work (PLAN.md §5), and `AgentEvent` must be defined once in
- * `packages/core` — never sketched here first. Use the `adapter-authoring` skill.
+ * Only `claude` exists so far — Phase 2 (PLAN.md §5). See the `adapter-authoring` skill
+ * before adding another; `ModelAdapter`/`AgentEvent` live in `packages/core`, never
+ * redefined here.
  */
-
-export {};
+export { claudeAdapter, CLAUDE_CAPABILITIES } from './claude/adapter.js';

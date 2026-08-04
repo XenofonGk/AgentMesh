@@ -165,7 +165,7 @@ describeDb('proxy forwarding path', () => {
     const response = await app.server.inject({
       method: 'POST',
       url: '/providers/claude/v1/messages',
-      headers: { 'x-agentmesh-run-token': 'not-a-real-token' },
+      headers: { 'x-api-key': 'not-a-real-token' },
     });
     expect(response.statusCode).toBe(401);
     expect(upstream.requests).toHaveLength(0);
@@ -185,7 +185,7 @@ describeDb('proxy forwarding path', () => {
     const response = await app.server.inject({
       method: 'POST',
       url: '/providers/claude/v1/messages',
-      headers: { 'x-agentmesh-run-token': token },
+      headers: { 'x-api-key': token },
     });
     expect(response.statusCode).toBe(403);
     expect(upstream.requests).toHaveLength(0);
@@ -209,7 +209,7 @@ describeDb('proxy forwarding path', () => {
     const response = await app.server.inject({
       method: 'POST',
       url: '/providers/claude/v1/some-other-endpoint',
-      headers: { 'x-agentmesh-run-token': token },
+      headers: { 'x-api-key': token },
     });
     expect(response.statusCode).toBe(404);
     expect(upstream.requests).toHaveLength(0);
@@ -229,7 +229,7 @@ describeDb('proxy forwarding path', () => {
     const response = await app.server.inject({
       method: 'POST',
       url: '/providers/not-a-real-provider/v1/messages',
-      headers: { 'x-agentmesh-run-token': token },
+      headers: { 'x-api-key': token },
     });
     expect(response.statusCode).toBe(404);
     expect(upstream.requests).toHaveLength(0);
@@ -249,7 +249,7 @@ describeDb('proxy forwarding path', () => {
     const response = await app.server.inject({
       method: 'POST',
       url: '/providers/claude/v1/messages',
-      headers: { 'x-agentmesh-run-token': token, 'content-type': 'application/json' },
+      headers: { 'x-api-key': token, 'content-type': 'application/json' },
       payload: JSON.stringify({ model: 'claude', messages: [] }),
     });
     expect(response.statusCode).toBe(424);
@@ -272,7 +272,7 @@ describeDb('proxy forwarding path', () => {
       method: 'POST',
       url: '/providers/claude/v1/messages',
       headers: {
-        'x-agentmesh-run-token': token,
+        'x-api-key': token,
         'content-type': 'application/json',
         'anthropic-version': '2023-06-01',
       },
@@ -296,9 +296,14 @@ describeDb('proxy forwarding path', () => {
 
   /**
    * The exact attack the header allowlist exists to stop: a runner that sends its own
-   * auth-shaped headers must never have them reach the upstream, spoofed value or not.
+   * auth-shaped headers besides the run token itself must never have them reach the
+   * upstream, spoofed value or not. `x-api-key` can't be double-tested here the way
+   * `authorization`/`cookie` are — it's the one header that's *supposed* to carry a
+   * value inbound (the run token) — so its coverage is the "injects the real
+   * vault-held key" test above: the value that reaches upstream is always the real
+   * secret, never whatever the runner put in that header.
    */
-  it('ignores a runner-supplied x-api-key and Authorization header entirely', async () => {
+  it('ignores a runner-supplied Authorization and Cookie header entirely', async () => {
     const vault = await freshVault();
     const userId = await freshUser();
     await vault.putCredential(userId, 'claude', Buffer.from('sk-ant-the-real-key'));
@@ -314,9 +319,8 @@ describeDb('proxy forwarding path', () => {
       method: 'POST',
       url: '/providers/claude/v1/messages',
       headers: {
-        'x-agentmesh-run-token': token,
+        'x-api-key': token,
         'content-type': 'application/json',
-        'x-api-key': 'attacker-controlled-value',
         authorization: 'Bearer attacker-controlled-value',
         cookie: 'agentmesh_session=stolen',
       },
@@ -348,7 +352,7 @@ describeDb('proxy forwarding path', () => {
     const response = await app.server.inject({
       method: 'POST',
       url: '/providers/claude/v1/messages',
-      headers: { 'x-agentmesh-run-token': token, 'content-type': 'application/json' },
+      headers: { 'x-api-key': token, 'content-type': 'application/json' },
       payload: JSON.stringify({ model: 'claude-x', messages: [] }),
     });
 

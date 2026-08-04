@@ -4,11 +4,16 @@
  *
  * Every step here exists to close one specific hole:
  *
- *   1. Resolve the run token → grant                (never trust a provider/user the
- *      (packages/db/src/run-grants.ts)                runner claims directly)
- *   2. Check the grant permits this provider         (a Claude run can't spend Gemini)
- *   3. Resolve (provider, path) against the pinned
- *      route table — never the request's Host/URL    (the SSRF guard — see providers.ts)
+ *   1. Resolve (provider, path) against the pinned
+ *      route table — never the request's Host/URL    (the SSRF guard — see providers.ts;
+ *                                                      also decides which header the run
+ *                                                      token below travels in)
+ *   2. Resolve the run token → grant, read out of
+ *      route.authHeader                               (never trust a provider/user the
+ *      (packages/db/src/run-grants.ts)                runner claims directly — see the
+ *                                                      module doc on headers.ts for why
+ *                                                      it's this header, not a bespoke one)
+ *   3. Check the grant permits this provider         (a Claude run can't spend Gemini)
  *   4. Filter inbound headers to an allowlist         (the runner cannot spoof or shadow
  *                                                      the header we're about to inject)
  *   5. Inject the vault-held secret, forward, relay
@@ -25,7 +30,7 @@ import {
   resolveProviderRoute,
   type ProviderRoute,
 } from './providers.js';
-import { filterInboundHeaders, RUN_TOKEN_HEADER } from './headers.js';
+import { filterInboundHeaders } from './headers.js';
 import { PROXY_BIND_HOST } from './constants.js';
 
 export interface BuildProxyOptions {
@@ -84,7 +89,17 @@ export async function buildProxyServer({
     const wildcard = (request.params as { '*': string })['*'];
     const upstreamPath = `/${wildcard}`;
 
-    const token = request.headers[RUN_TOKEN_HEADER];
+    // Resolved before the token: which header the run token travels in depends on the
+    // provider (route.authHeader — the same header a real credential would occupy,
+    // since that's the only header a provider's own SDK/CLI knows how to send one in).
+    // Same failure shape for "unknown provider" and "unlisted path" (see providers.ts):
+    // a probe for an unlisted endpoint should not distinguish the two.
+    const route = resolveProviderRoute(provider, upstreamPath, providerRoutes);
+    if (route === null) {
+      return reply.code(404).send({ error: 'unknown_route' });
+    }
+
+    const token = request.headers[route.authHeader];
     if (typeof token !== 'string' || token === '') {
       return reply.code(401).send({ error: 'missing_run_token' });
     }
@@ -96,13 +111,6 @@ export async function buildProxyServer({
 
     if (!grantPermits(grant, provider)) {
       return reply.code(403).send({ error: 'provider_not_permitted' });
-    }
-
-    // Same failure shape for "unknown provider" and "unlisted path" (see
-    // providers.ts): a probe for an unlisted endpoint should not distinguish the two.
-    const route = resolveProviderRoute(provider, upstreamPath, providerRoutes);
-    if (route === null) {
-      return reply.code(404).send({ error: 'unknown_route' });
     }
 
     const outboundHeaders = filterInboundHeaders(request.headers);
