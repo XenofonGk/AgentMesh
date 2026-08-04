@@ -133,6 +133,9 @@ importers:
       '@agentmesh/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@agentmesh/skills':
+        specifier: workspace:*
+        version: link:../../packages/skills
       next:
         specifier: ^15.5.4
         version: 15.5.22(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

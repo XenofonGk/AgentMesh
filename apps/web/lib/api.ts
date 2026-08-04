@@ -93,6 +93,66 @@ export function subscribeToAttempt(attemptId: string): EventSource {
   });
 }
 
+export interface SkillSummary {
+  name: string;
+  description: string | null;
+  valid: boolean;
+  error?: string;
+}
+
+/** List every skill under `AGENTMESH_SKILLS_DIR`, valid or not. */
+export async function listSkills(): Promise<SkillSummary[]> {
+  const response = await apiFetch('/skills');
+  if (!response.ok) {
+    throw new Error(`failed to list skills: ${response.status.toString()}`);
+  }
+  const { skills } = (await response.json()) as { skills: SkillSummary[] };
+  return skills;
+}
+
+/** Fetch a single skill's raw `SKILL.md` content, or `null` if it doesn't exist. */
+export async function getSkill(name: string): Promise<{ name: string; content: string } | null> {
+  const response = await apiFetch(`/skills/${encodeURIComponent(name)}`);
+  if (!response.ok) return null;
+  return (await response.json()) as { name: string; content: string };
+}
+
+/**
+ * Create or update a skill from raw `SKILL.md` text. The server re-validates with
+ * `parseSkillMarkdown` regardless of any client-side check — see
+ * `apps/api/src/skills/routes.ts`. Returns a typed error on rejection rather than
+ * throwing, so the editor can show it inline.
+ */
+export async function saveSkill(
+  name: string,
+  content: string,
+): Promise<{ ok: true } | { ok: false; error: string; message?: string }> {
+  const response = await apiFetch(`/skills/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
+    return {
+      ok: false,
+      error: body.error ?? `http_${response.status.toString()}`,
+      ...(body.message !== undefined ? { message: body.message } : {}),
+    };
+  }
+  return { ok: true };
+}
+
+export async function deleteSkill(name: string): Promise<boolean> {
+  const response = await apiFetch(`/skills/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
+  return response.ok;
+}
+
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 
 /** Approve or reject a `file_edit` event — Phase 3's diff-review UI. */

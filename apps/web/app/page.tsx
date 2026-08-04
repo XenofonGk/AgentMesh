@@ -74,11 +74,16 @@ export default function HomePage(): React.JSX.Element | null {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 px-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">AgentMesh</h1>
-        <p className="mt-2 text-neutral-600 dark:text-neutral-400">
-          Describe a task and watch an agent work on it, live.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">AgentMesh</h1>
+          <p className="mt-2 text-neutral-600 dark:text-neutral-400">
+            Describe a task and watch an agent work on it, live.
+          </p>
+        </div>
+        <a href="/skills" className="text-sm text-neutral-500 hover:underline">
+          Skills →
+        </a>
       </div>
 
       <form
