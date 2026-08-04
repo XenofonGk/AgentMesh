@@ -8,6 +8,8 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   /** Exact origin allowed to call the API from a browser. No wildcard. */
   WEB_ORIGIN: z.string().url().default('http://localhost:3000'),
+  /** Reachable only from the `internal` network — see compose.yaml and SECURITY.md. */
+  PROXY_URL: z.string().url().default('http://proxy:3002'),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),

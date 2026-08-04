@@ -2,10 +2,13 @@ import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import { redact } from '@agentmesh/core';
+import type { SandboxProvider } from '@agentmesh/core';
 import { createDatabase, type DatabaseHandle, type Vault } from '@agentmesh/db';
 import type { Config } from './config.js';
 import { registerAuthRoutes } from './auth/routes.js';
 import { registerCredentialRoutes } from './credentials/routes.js';
+import { registerOrchestratorRoutes } from './orchestrator/routes.js';
+import { Orchestrator } from './orchestrator/orchestrator.js';
 
 export interface BuildOptions {
   config: Config;
@@ -17,6 +20,11 @@ export interface BuildOptions {
    * which routes.test.ts (real Postgres, real Vault) exercises to catch.
    */
   vault?: Vault;
+  /**
+   * Optional for the same reason `vault` is: `server.test.ts` builds a server with no
+   * real Docker daemon behind it. Required in practice — `index.ts` always passes one.
+   */
+  sandbox?: SandboxProvider;
 }
 
 export interface App {
@@ -28,6 +36,7 @@ export async function buildServer({
   config,
   database,
   vault,
+  sandbox,
 }: BuildOptions): Promise<App> {
   const db = database ?? createDatabase(config.DATABASE_URL);
 
@@ -58,6 +67,10 @@ export async function buildServer({
   await registerAuthRoutes(server, db.db, config.NODE_ENV);
   if (vault !== undefined) {
     await registerCredentialRoutes(server, db.db, vault);
+  }
+  if (sandbox !== undefined) {
+    const orchestrator = new Orchestrator(db.db, sandbox);
+    await registerOrchestratorRoutes(server, db.db, orchestrator, config.PROXY_URL);
   }
 
   /** Liveness: is the process up? Never touches the database. */

@@ -27,7 +27,11 @@ async function main(): Promise<void> {
     throw error;
   }
 
-  const { server } = await buildProxyServer({ vault, logLevel: config.LOG_LEVEL });
+  const { server } = await buildProxyServer({
+    vault,
+    db: database.db,
+    logLevel: config.LOG_LEVEL,
+  });
 
   const shutdown = async (signal: string): Promise<void> => {
     server.log.info({ signal }, 'shutting down');
@@ -43,7 +47,9 @@ async function main(): Promise<void> {
     });
   }
 
-  // PROXY_BIND_HOST is a constant, never config.PROXY_HOST — see constants.ts.
+  // PROXY_BIND_HOST is a constant, never config.PROXY_HOST — see constants.ts. Reaching
+  // the public internet requires both this AND a host-published port in compose.yaml;
+  // there is deliberately no way to configure the latter into existing either.
   await server.listen({ host: PROXY_BIND_HOST, port: config.PROXY_PORT });
 }
 

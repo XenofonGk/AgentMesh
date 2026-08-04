@@ -235,11 +235,14 @@ describeDb('schema (migration 1)', () => {
     `);
     const offenders = rows
       .map((row) => `${row.table_name}.${row.column_name}`)
-      // Allowed: a hash is not a plaintext credential, and the session token column
-      // stores a SHA-256 digest — see the schema comment on `sessions`.
+      // Allowed: a hash is not a plaintext credential, and both token_hash columns
+      // store a SHA-256 digest, never the token itself — see the schema comments on
+      // `sessions` and `run_grants`.
       .filter(
         (name) =>
-          name !== 'auth_identities.password_hash' && name !== 'sessions.token_hash',
+          name !== 'auth_identities.password_hash' &&
+          name !== 'sessions.token_hash' &&
+          name !== 'run_grants.token_hash',
       );
 
     expect(offenders).toEqual([]);

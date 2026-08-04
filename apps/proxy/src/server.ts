@@ -5,7 +5,7 @@
  * Every step here exists to close one specific hole:
  *
  *   1. Resolve the run token → grant                (never trust a provider/user the
- *                                                      runner claims directly)
+ *      (packages/db/src/run-grants.ts)                runner claims directly)
  *   2. Check the grant permits this provider         (a Claude run can't spend Gemini)
  *   3. Resolve (provider, path) against the pinned
  *      route table — never the request's Host/URL    (the SSRF guard — see providers.ts)
@@ -17,9 +17,9 @@
  */
 import { Readable } from 'node:stream';
 import Fastify, { type FastifyInstance } from 'fastify';
-import type { Vault } from '@agentmesh/db';
+import type { Database, Vault } from '@agentmesh/db';
+import { grantPermits, resolveRunToken } from '@agentmesh/db';
 import { redact } from '@agentmesh/core';
-import { RunTokenRegistry } from './run-token.js';
 import {
   DEFAULT_PROVIDER_ROUTES,
   resolveProviderRoute,
@@ -30,16 +30,15 @@ import { PROXY_BIND_HOST } from './constants.js';
 
 export interface BuildProxyOptions {
   vault: Vault;
+  /** Where run grants are resolved from — see packages/db/src/run-grants.ts. */
+  db: Database;
   /** Injectable so tests can point 'claude' at a fake upstream instead of the real API. */
   providerRoutes?: readonly ProviderRoute[];
-  /** Injectable so tests control token issuance and expiry directly. */
-  registry?: RunTokenRegistry;
   logLevel?: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace' | 'silent';
 }
 
 export interface ProxyApp {
   server: FastifyInstance;
-  registry: RunTokenRegistry;
 }
 
 /**
@@ -50,8 +49,8 @@ const EMPTY_BODY = Buffer.alloc(0);
 
 export async function buildProxyServer({
   vault,
+  db,
   providerRoutes = DEFAULT_PROVIDER_ROUTES,
-  registry = new RunTokenRegistry(),
   logLevel = 'info',
 }: BuildProxyOptions): Promise<ProxyApp> {
   const server = Fastify({
@@ -77,6 +76,9 @@ export async function buildProxyServer({
     done(null, body);
   });
 
+  /** Liveness only — used by Compose's healthcheck. Never touches the database. */
+  server.get('/health', () => ({ status: 'ok' as const }));
+
   server.all('/providers/:provider/*', async (request, reply) => {
     const { provider } = request.params as { provider: string };
     const wildcard = (request.params as { '*': string })['*'];
@@ -87,12 +89,12 @@ export async function buildProxyServer({
       return reply.code(401).send({ error: 'missing_run_token' });
     }
 
-    const grant = registry.resolve(token);
+    const grant = await resolveRunToken(db, token);
     if (grant === null) {
       return reply.code(401).send({ error: 'invalid_run_token' });
     }
 
-    if (!RunTokenRegistry.permits(grant, provider)) {
+    if (!grantPermits(grant, provider)) {
       return reply.code(403).send({ error: 'provider_not_permitted' });
     }
 
@@ -139,7 +141,7 @@ export async function buildProxyServer({
     return reply.send(Readable.fromWeb(upstream.body));
   });
 
-  return { server, registry };
+  return { server };
 }
 
 export { PROXY_BIND_HOST };

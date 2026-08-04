@@ -9,6 +9,7 @@ import {
 } from '@agentmesh/db';
 import { loadConfig } from './config.js';
 import { buildServer } from './server.js';
+import { DockerSandboxProvider } from './orchestrator/docker-sandbox-provider.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -51,7 +52,8 @@ async function main(): Promise<void> {
     throw error;
   }
 
-  const { server } = await buildServer({ config, database, vault });
+  const sandbox = new DockerSandboxProvider();
+  const { server } = await buildServer({ config, database, vault, sandbox });
 
   const shutdown = async (signal: string): Promise<void> => {
     server.log.info({ signal }, 'shutting down');

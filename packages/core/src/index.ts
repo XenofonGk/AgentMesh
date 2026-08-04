@@ -10,3 +10,10 @@ export type {
   ResolvedProvider,
   SecretRef,
 } from './provider.js';
+export type {
+  ResourceLimits,
+  RunSpec,
+  Sandbox,
+  SandboxOutput,
+  SandboxProvider,
+} from './sandbox.js';
