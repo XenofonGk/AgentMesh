@@ -114,6 +114,13 @@ describeDb('proxy forwarding path', () => {
         paths: new Set(['/v1/messages']),
         authHeader: 'x-api-key',
       },
+      {
+        provider: 'deepseek',
+        origin: upstream.origin,
+        paths: new Set(['/chat/completions']),
+        authHeader: 'authorization',
+        authValuePrefix: 'Bearer ',
+      },
     ];
   }
 
@@ -292,6 +299,69 @@ describeDb('proxy forwarding path', () => {
       model: 'claude-x',
       messages: [{ role: 'user', content: 'hi' }],
     });
+  });
+
+  /**
+   * The `authValuePrefix` round trip: the run token arrives as `Bearer <token>` (the
+   * only way a real `Authorization` header looks), gets its prefix stripped before
+   * being looked up as a token, and the real secret goes back out with the same
+   * prefix restored — an upstream that requires `Bearer` sees a well-formed header,
+   * never a bare key or a bare token.
+   */
+  it('strips and restores the Bearer prefix for an OpenAI-compatible provider', async () => {
+    const vault = await freshVault();
+    const userId = await freshUser();
+    await vault.putCredential(
+      userId,
+      'deepseek',
+      Buffer.from('sk-deepseek-the-real-key'),
+    );
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
+    const attemptId = await freshAttempt(userId, 'deepseek');
+    const { token } = await issueRunToken(
+      handle.db,
+      { attemptId, userId, provider: 'deepseek' },
+      60_000,
+    );
+
+    const response = await app.server.inject({
+      method: 'POST',
+      url: '/providers/deepseek/chat/completions',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      payload: JSON.stringify({ model: 'deepseek-chat', messages: [] }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    const upstreamRequest = upstream.requests[0]!;
+    expect(upstreamRequest.headers['authorization']).toBe(
+      'Bearer sk-deepseek-the-real-key',
+    );
+  });
+
+  it('rejects a deepseek request whose Authorization header is missing the Bearer prefix', async () => {
+    const vault = await freshVault();
+    const userId = await freshUser();
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
+    const attemptId = await freshAttempt(userId, 'deepseek');
+    const { token } = await issueRunToken(
+      handle.db,
+      { attemptId, userId, provider: 'deepseek' },
+      60_000,
+    );
+
+    const response = await app.server.inject({
+      method: 'POST',
+      url: '/providers/deepseek/chat/completions',
+      // The token itself, but without the 'Bearer ' prefix a real client always sends.
+      headers: { authorization: token, 'content-type': 'application/json' },
+      payload: JSON.stringify({ model: 'deepseek-chat', messages: [] }),
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(upstream.requests).toHaveLength(0);
   });
 
   /**

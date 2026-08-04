@@ -23,19 +23,28 @@ export interface ProviderRoute {
   paths: ReadonlySet<string>;
   /** The header the vault-held secret is injected under for this provider. */
   authHeader: string;
+  /**
+   * Prepended to the secret before it's written into `authHeader` — e.g. `'Bearer '`
+   * for OpenAI-compatible APIs' `Authorization` header. Absent for providers (Claude,
+   * Gemini) whose auth header wants the raw value with nothing in front of it. Still
+   * fixed, code-defined, never derived from anything the runner sends — same
+   * reasoning as every other field on this table.
+   */
+  authValuePrefix?: string;
 }
 
 /**
- * Anthropic and Gemini, deliberately not generalized further than these two data
- * points prove necessary. `/v1/messages` is the one endpoint the Claude Agent SDK's
- * Messages API calls. Gemini's path bakes in one fixed model
+ * Anthropic, Gemini, and DeepSeek — deliberately not generalized further than these
+ * data points prove necessary. `/v1/messages` is the one endpoint the Claude Agent
+ * SDK's Messages API calls. Gemini's path bakes in one fixed model
  * (`gemini-2.0-flash:generateContent`, not the streaming variant — see the adapter's
  * own doc comment for why) rather than a family of model paths — same reasoning as
  * Claude's single path: widen this when a second model or endpoint actually needs it,
  * not before. `x-goog-api-key` is Google's own documented header for the Generative
  * Language API, so the run token travels there the same way it travels in `x-api-key`
  * for Claude — see `packages/adapters/src/claude/adapter.ts`'s module doc for why the
- * run token has to occupy the real auth header at all.
+ * run token has to occupy the real auth header at all. DeepSeek is OpenAI-compatible:
+ * `Authorization: Bearer <key>`, hence `authValuePrefix`.
  */
 export const DEFAULT_PROVIDER_ROUTES: readonly ProviderRoute[] = [
   {
@@ -49,6 +58,13 @@ export const DEFAULT_PROVIDER_ROUTES: readonly ProviderRoute[] = [
     origin: 'https://generativelanguage.googleapis.com',
     paths: new Set(['/v1beta/models/gemini-2.0-flash:generateContent']),
     authHeader: 'x-goog-api-key',
+  },
+  {
+    provider: 'deepseek',
+    origin: 'https://api.deepseek.com',
+    paths: new Set(['/chat/completions']),
+    authHeader: 'authorization',
+    authValuePrefix: 'Bearer ',
   },
 ];
 
