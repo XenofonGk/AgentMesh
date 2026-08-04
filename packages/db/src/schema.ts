@@ -16,9 +16,11 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  bigserial,
   customType,
   index,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -339,4 +341,33 @@ export const runGrants = pgTable(
     index('run_grants_attempt_id_idx').on(table.attemptId),
     index('run_grants_expires_at_idx').on(table.expiresAt),
   ],
+);
+
+/**
+ * The persisted form of `AgentEvent` (`packages/core/src/agent-event.ts`) — one row per
+ * event, in the order it happened. `payload` is the whole event as JSON rather than a
+ * column per `type`'s fields: the union has seven variants with almost no shared shape
+ * beyond `type`/`attemptId`/`provider`/`timestamp` (already columns here), and a wide
+ * table of nullable per-variant columns would just be `payload` with extra steps and a
+ * migration required every time a variant's fields change. `id` is a bigserial, not a
+ * uuid: what a browser reconnecting to the SSE stream needs is "give me everything
+ * after N," and a monotonically increasing integer is what makes that a single indexed
+ * range scan instead of a timestamp comparison that ties in whenever two events share a
+ * millisecond.
+ */
+export const agentEvents = pgTable(
+  'agent_events',
+  {
+    id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+    attemptId: uuid('attempt_id')
+      .notNull()
+      .references(() => attempts.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    /** The full `AgentEvent`, exactly as the adapter emitted it. */
+    payload: jsonb('payload').notNull(),
+    createdAt: timestamptz('created_at')
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [index('agent_events_attempt_id_id_idx').on(table.attemptId, table.id)],
 );

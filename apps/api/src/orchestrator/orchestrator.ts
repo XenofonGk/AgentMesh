@@ -34,6 +34,8 @@ export interface StartRunOptions {
   task: string;
   attempts: readonly AttemptImage[];
   proxyUrl: string;
+  /** Where the runner's entrypoint reports `AgentEvent`s — see `apps/api/src/events/routes.ts`. */
+  apiUrl: string;
 }
 
 export interface StartRunResult {
@@ -68,6 +70,7 @@ export class Orchestrator {
         run.id,
         options.userId,
         options.proxyUrl,
+        options.apiUrl,
         attemptImage,
       );
       attemptIds.push(attemptId);
@@ -80,6 +83,7 @@ export class Orchestrator {
     runId: string,
     userId: string,
     proxyUrl: string,
+    apiUrl: string,
     attemptImage: AttemptImage,
   ): Promise<string> {
     const [attempt] = await this.db
@@ -104,6 +108,8 @@ export class Orchestrator {
         env: {
           AGENTMESH_RUN_TOKEN: token,
           AGENTMESH_PROXY_URL: proxyUrl,
+          AGENTMESH_API_URL: apiUrl,
+          AGENTMESH_ATTEMPT_ID: attempt.id,
         },
         networks: [RUNNER_NETWORK],
         resources: { cpus: 1, memoryMb: 2048 },

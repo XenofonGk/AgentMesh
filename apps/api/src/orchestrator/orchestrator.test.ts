@@ -66,6 +66,7 @@ describeDb('Orchestrator', () => {
       userId,
       task: 'do the thing',
       proxyUrl: 'http://proxy:3002',
+      apiUrl: 'http://api:3001',
       attempts: [
         { provider: 'claude', image: 'agentmesh/claude:latest', command: ['run'] },
         { provider: 'codex', image: 'agentmesh/codex:latest', command: ['run'] },
@@ -91,6 +92,8 @@ describeDb('Orchestrator', () => {
       expect(Object.keys(record.spec.env)).toEqual([
         'AGENTMESH_RUN_TOKEN',
         'AGENTMESH_PROXY_URL',
+        'AGENTMESH_API_URL',
+        'AGENTMESH_ATTEMPT_ID',
       ]);
       const token = record.spec.env['AGENTMESH_RUN_TOKEN']!;
       const grant = await resolveRunToken(handle.db, token);
@@ -107,6 +110,7 @@ describeDb('Orchestrator', () => {
       userId,
       task: 'do the thing',
       proxyUrl: 'http://proxy:3002',
+      apiUrl: 'http://api:3001',
       attempts: [
         { provider: 'claude', image: 'agentmesh/claude:latest', command: ['run'] },
       ],

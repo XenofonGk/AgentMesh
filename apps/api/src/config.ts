@@ -15,6 +15,12 @@ const EnvSchema = z.object({
    * directly. Reachable only from the `internal` network, same reasoning as PROXY_URL.
    */
   BROKER_URL: z.string().url().default('http://broker:3003'),
+  /**
+   * How a runner container reaches this same process to report `AgentEvent`s —
+   * `apps/api/src/events/routes.ts`. On the `internal` network, same as PROXY_URL,
+   * `api` being both this Compose service's name and DNS name inside that network.
+   */
+  API_URL: z.string().url().default('http://api:3001'),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),

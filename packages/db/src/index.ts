@@ -33,3 +33,5 @@ export {
   revokeRunGrant,
 } from './run-grants.js';
 export type { RunGrant, IssuedRunToken } from './run-grants.js';
+export { appendEvent, listEventsAfter } from './events.js';
+export type { StoredAgentEvent } from './events.js';

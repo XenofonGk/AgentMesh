@@ -37,6 +37,7 @@ export async function registerOrchestratorRoutes(
   db: Database,
   orchestrator: Orchestrator,
   proxyUrl: string,
+  apiUrl: string,
 ): Promise<void> {
   const guard = { preHandler: requireSession(db) };
 
@@ -50,6 +51,7 @@ export async function registerOrchestratorRoutes(
       userId: request.userId!,
       task: body.data.task,
       proxyUrl,
+      apiUrl,
       attempts: body.data.providers.map(imageForProvider),
     });
 
