@@ -17,3 +17,10 @@ export type {
   SandboxOutput,
   SandboxProvider,
 } from './sandbox.js';
+export type { AgentEvent, Usage } from './agent-event.js';
+export type {
+  AdapterCapabilities,
+  ModelAdapter,
+  RunContext,
+  RunInput,
+} from './adapter.js';

@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@agentmesh/core": "workspace:*",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.221",
     "zod": "^3.25.76"
   }
 }

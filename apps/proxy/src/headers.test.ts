@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterInboundHeaders, RUN_TOKEN_HEADER } from './headers.js';
+import { filterInboundHeaders } from './headers.js';
 
 describe('filterInboundHeaders', () => {
   it('keeps the small set of headers the upstream API needs', () => {
@@ -34,8 +34,8 @@ describe('filterInboundHeaders', () => {
     expect(out).toEqual({});
   });
 
-  it('drops the run-token header itself — it authenticates the caller, it is not upstream-bound', () => {
-    const out = filterInboundHeaders({ [RUN_TOKEN_HEADER]: 'some-run-token' });
+  it('drops x-api-key even though it is where a run token travels inbound — it authenticates the caller, it is not upstream-bound as-sent', () => {
+    const out = filterInboundHeaders({ 'x-api-key': 'some-run-token' });
     expect(out).toEqual({});
   });
 

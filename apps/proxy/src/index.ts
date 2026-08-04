@@ -12,4 +12,4 @@ export { buildProxyServer } from './server.js';
 export type { BuildProxyOptions, ProxyApp } from './server.js';
 export { DEFAULT_PROVIDER_ROUTES, resolveProviderRoute } from './providers.js';
 export type { ProviderRoute } from './providers.js';
-export { filterInboundHeaders, RUN_TOKEN_HEADER } from './headers.js';
+export { filterInboundHeaders } from './headers.js';

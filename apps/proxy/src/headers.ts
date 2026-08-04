@@ -11,8 +11,14 @@
 
 /**
  * Everything the Anthropic Messages API needs from the caller side, and nothing else.
- * Notably absent: `authorization`, `x-api-key`, `cookie`, `host`, and the run-token
- * header itself — all real values, none of which belong on the outbound leg.
+ * Notably absent: `authorization`, `x-api-key`, `cookie`, and `host` — all real values,
+ * none of which belong on the outbound leg. `x-api-key` is also where a runner's run
+ * token travels *inbound* (see server.ts: providers' own SDKs only know how to send a
+ * credential in their normal auth header, so that's the slot the run token rides in
+ * too) — it is read out of the raw request before this filter ever runs, and dropped
+ * here same as any other auth-shaped header, because the value this function lets
+ * through is never the run token or a credential, only what `vault.useCredential`
+ * injects afterward.
  */
 const ALLOWED_INBOUND_HEADERS = new Set([
   'content-type',
@@ -31,6 +37,3 @@ export function filterInboundHeaders(
   }
   return outbound;
 }
-
-/** The header a runner presents its run token in. Never in `ALLOWED_INBOUND_HEADERS`. */
-export const RUN_TOKEN_HEADER = 'x-agentmesh-run-token';
