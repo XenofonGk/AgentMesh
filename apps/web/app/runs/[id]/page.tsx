@@ -3,7 +3,23 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { AgentEvent } from '@agentmesh/core';
-import { getRun, me, subscribeToAttempt, type RunDetail } from '../../../lib/api';
+import {
+  getRun,
+  me,
+  subscribeToAttempt,
+  type AttemptSummary,
+  type RunDetail,
+} from '../../../lib/api';
+
+function formatStats(attempt: AttemptSummary): string | null {
+  const parts: string[] = [];
+  if (attempt.costUsd !== null) parts.push(`$${attempt.costUsd}`);
+  if (attempt.latencyMs !== null) parts.push(`${(attempt.latencyMs / 1000).toFixed(1)}s`);
+  if (attempt.inputTokens !== null && attempt.outputTokens !== null) {
+    parts.push(`${attempt.inputTokens.toString()}→${attempt.outputTokens.toString()} tok`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
 
 /**
  * Consecutive `message_delta`s render as one growing paragraph, not one line per
@@ -75,7 +91,8 @@ function reduceEvents(events: AgentEvent[]): Block[] {
   return blocks;
 }
 
-function AttemptPanel({ attemptId, provider }: { attemptId: string; provider: string }) {
+function AttemptPanel({ attempt }: { attempt: AttemptSummary }) {
+  const { id: attemptId, provider } = attempt;
   const [events, setEvents] = useState<AgentEvent[]>([]);
 
   useEffect(() => {
@@ -98,8 +115,9 @@ function AttemptPanel({ attemptId, provider }: { attemptId: string; provider: st
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
       <header className="flex items-center justify-between border-b border-neutral-200 px-4 py-2 dark:border-neutral-800">
         <span className="font-medium">{provider}</span>
-        <span className="text-xs text-neutral-500">
-          {done ? done.outcome : 'running…'}
+        <span className="flex items-center gap-2 text-xs text-neutral-500">
+          {formatStats(attempt) && <span>{formatStats(attempt)}</span>}
+          <span>{done ? done.outcome : 'running…'}</span>
         </span>
       </header>
       <div className="flex-1 overflow-y-auto p-4 text-sm">
@@ -143,21 +161,34 @@ export default function RunPage(): React.JSX.Element | null {
   const params = useParams<{ id: string }>();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    void me().then((user) => {
-      if (!user) {
-        router.replace('/login');
-        return;
-      }
-      setAuthChecked(true);
-    });
+    void me()
+      .then((user) => {
+        if (!user) {
+          router.replace('/login');
+          return;
+        }
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        setAuthError('Could not reach the API. Is it running?');
+      });
   }, [router]);
 
   useEffect(() => {
     if (!authChecked) return;
     void getRun(params.id).then(setRun);
   }, [authChecked, params.id]);
+
+  if (authError) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-2 px-6 text-center">
+        <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>
+      </main>
+    );
+  }
 
   if (!authChecked) return null;
   if (!run) return <main className="p-6">Loading…</main>;
@@ -172,11 +203,7 @@ export default function RunPage(): React.JSX.Element | null {
       </div>
       <div className="flex min-h-0 flex-1 gap-4">
         {run.attempts.map((attempt) => (
-          <AttemptPanel
-            key={attempt.id}
-            attemptId={attempt.id}
-            provider={attempt.provider}
-          />
+          <AttemptPanel key={attempt.id} attempt={attempt} />
         ))}
       </div>
     </main>
