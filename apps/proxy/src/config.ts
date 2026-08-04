@@ -8,6 +8,10 @@ const EnvSchema = z.object({
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
+  // The one Ollama-specific config value — not a secret, so it lives in the environment
+  // like any other config, not the vault. See providers.ts's `DEFAULT_OLLAMA_URL` doc
+  // for what the default points at and why.
+  OLLAMA_URL: z.string().url().default('http://host.docker.internal:11434'),
 });
 
 export type Config = z.infer<typeof EnvSchema>;

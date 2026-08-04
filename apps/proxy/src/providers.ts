@@ -31,6 +31,14 @@ export interface ProviderRoute {
    * reasoning as every other field on this table.
    */
   authValuePrefix?: string;
+  /**
+   * `false` only for Ollama. Every other route needs the vault to hand back a secret
+   * before this route's request can be forwarded; Ollama's `credentialSchema` is `null`
+   * (`packages/core/src/adapter.ts`) because there genuinely is none. Absent/`true`
+   * means "resolve a secret first," so `server.ts`'s `vault.useCredential` call stays
+   * the default for every route that doesn't explicitly opt out here.
+   */
+  secretRequired?: boolean;
 }
 
 /**
@@ -46,7 +54,39 @@ export interface ProviderRoute {
  * run token has to occupy the real auth header at all. DeepSeek and Grok are both
  * OpenAI-compatible: `Authorization: Bearer <key>`, hence `authValuePrefix` on both.
  */
-export const DEFAULT_PROVIDER_ROUTES: readonly ProviderRoute[] = [
+/** Default origin for the `ollama` route — a Docker Desktop / Linux host-gateway alias
+ * (see compose.yaml's `extra_hosts` on the proxy service), not the public internet.
+ * Overridable per-deployment via `buildProviderRoutes`'s `ollamaUrl` argument, itself
+ * fed by `OLLAMA_URL` (`config.ts`) so an operator with Ollama on a different box (a
+ * LAN GPU machine, say) doesn't have to run on the default. */
+export const DEFAULT_OLLAMA_URL = 'http://host.docker.internal:11434';
+
+/**
+ * Anthropic, Gemini, DeepSeek, Grok, and Ollama. `ollamaUrl` lets `main.ts` bake in the
+ * operator's `OLLAMA_URL` without needing a mutable global — see `DEFAULT_OLLAMA_URL`.
+ */
+export function buildProviderRoutes(
+  ollamaUrl: string = DEFAULT_OLLAMA_URL,
+): readonly ProviderRoute[] {
+  return [
+    ...BASE_PROVIDER_ROUTES,
+    {
+      provider: 'ollama',
+      origin: ollamaUrl,
+      // Ollama's streaming chat endpoint — see the adapter's own doc comment for why
+      // this is `/api/chat`, not `/api/generate`.
+      paths: new Set(['/api/chat']),
+      // Not actually used to inject anything (secretRequired: false), but the run
+      // token still needs a header slot to travel in — see providers.ts's own header
+      // doc and the adapter's module comment for why that's still true with no secret.
+      authHeader: 'authorization',
+      authValuePrefix: 'Bearer ',
+      secretRequired: false,
+    },
+  ];
+}
+
+const BASE_PROVIDER_ROUTES: readonly ProviderRoute[] = [
   {
     provider: 'claude',
     origin: 'https://api.anthropic.com',
@@ -74,6 +114,13 @@ export const DEFAULT_PROVIDER_ROUTES: readonly ProviderRoute[] = [
     authValuePrefix: 'Bearer ',
   },
 ];
+
+/**
+ * The routing table every caller that doesn't need a custom `OLLAMA_URL` uses —
+ * `buildProviderRoutes()` with the default Ollama origin baked in. `main.ts` calls
+ * `buildProviderRoutes(config.OLLAMA_URL)` directly instead, for the real deployment.
+ */
+export const DEFAULT_PROVIDER_ROUTES: readonly ProviderRoute[] = buildProviderRoutes();
 
 /**
  * Resolves a (provider, path) pair to a fixed route, or null if either the provider is

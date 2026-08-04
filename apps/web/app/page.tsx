@@ -6,11 +6,13 @@ import { me, startRun } from '../lib/api';
 
 /**
  * Only providers with a real adapter (`packages/adapters/src`) are selectable — see
- * PLAN.md Phase 3 for the rest. `gemini`, `deepseek`, and `grok` are not agentic (see
- * each adapter's own doc comment): they stream a plain response, neither edits files or
- * runs tools.
+ * PLAN.md Phase 3 for the rest. `gemini`, `deepseek`, `grok`, and `ollama` are not
+ * agentic (see each adapter's own doc comment): they stream a plain response, neither
+ * edits files or runs tools. `ollama` is also PLAN.md's no-credential control case —
+ * selecting it needs no stored credential at all, only a reachable `OLLAMA_URL` on the
+ * proxy (see `apps/proxy/src/providers.ts`).
  */
-const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek', 'grok'];
+const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek', 'grok', 'ollama'];
 
 export default function HomePage(): React.JSX.Element | null {
   const router = useRouter();

@@ -48,6 +48,14 @@ services:
     # the host, at any address, regardless of which interface it listens on inside its
     # own container. See constants.ts and SECURITY.md → invariant 2.
     networks: [internal, default]
+    # Lets `OLLAMA_URL`'s default (`http://host.docker.internal:11434`) resolve on
+    # Linux hosts too — Docker Desktop already provides this alias, `host-gateway` is
+    # what makes it work under plain Linux `docker compose`. This does not grant the
+    # proxy any egress it didn't already have (it's on `default` regardless, per the
+    # comment above) — it only maps a hostname to the host's own gateway IP, the same
+    # thing every other provider's real DNS name already resolves via `default`.
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     environment:
       NODE_ENV: production
       PROXY_PORT: 3002
@@ -55,6 +63,9 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-agentmesh}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agentmesh}
       VAULT_MASTER_KEY: '${VAULT_MASTER_KEY:?VAULT_MASTER_KEY is required — generate one with openssl rand -base64 32}'
       VAULT_MASTER_KEY_VERSION: ${VAULT_MASTER_KEY_VERSION:-1}
+      # No credential — see providers.ts and .env.example. Operator-configurable so a
+      # LAN/GPU-box Ollama install doesn't have to be the local default.
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
     healthcheck:
       test:
         [
