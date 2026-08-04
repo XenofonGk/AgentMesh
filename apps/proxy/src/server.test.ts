@@ -17,6 +17,7 @@ import {
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   createDatabase,
+  issueRunToken,
   runMigrations,
   schema,
   Vault,
@@ -132,9 +133,22 @@ describeDb('proxy forwarding path', () => {
     return row!.id;
   }
 
+  /** A run/attempt pair to hang a grant off of — the forwarding path doesn't otherwise touch these. */
+  async function freshAttempt(userId: string, provider = 'claude'): Promise<string> {
+    const [run] = await handle.db
+      .insert(schema.runs)
+      .values({ userId, task: 'test task' })
+      .returning({ id: schema.runs.id });
+    const [attempt] = await handle.db
+      .insert(schema.attempts)
+      .values({ runId: run!.id, provider })
+      .returning({ id: schema.attempts.id });
+    return attempt!.id;
+  }
+
   it('rejects a request with no run token', async () => {
     const vault = await freshVault();
-    app = await buildProxyServer({ vault, providerRoutes: testRoutes() });
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
 
     const response = await app.server.inject({
       method: 'POST',
@@ -146,7 +160,7 @@ describeDb('proxy forwarding path', () => {
 
   it('rejects an unknown run token', async () => {
     const vault = await freshVault();
-    app = await buildProxyServer({ vault, providerRoutes: testRoutes() });
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
 
     const response = await app.server.inject({
       method: 'POST',
@@ -159,9 +173,12 @@ describeDb('proxy forwarding path', () => {
 
   it('rejects a token that does not permit this provider', async () => {
     const vault = await freshVault();
-    app = await buildProxyServer({ vault, providerRoutes: testRoutes() });
-    const { token } = app.registry.issue(
-      { runId: 'run-1', userId: 'user-1', providers: ['gemini'] },
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
+    const userId = await freshUser();
+    const attemptId = await freshAttempt(userId, 'gemini');
+    const { token } = await issueRunToken(
+      handle.db,
+      { attemptId, userId, provider: 'gemini' },
       60_000,
     );
 
@@ -180,9 +197,12 @@ describeDb('proxy forwarding path', () => {
    */
   it('rejects a path outside the provider allowlist without ever contacting the upstream', async () => {
     const vault = await freshVault();
-    app = await buildProxyServer({ vault, providerRoutes: testRoutes() });
-    const { token } = app.registry.issue(
-      { runId: 'run-1', userId: 'user-1', providers: ['claude'] },
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
+    const userId = await freshUser();
+    const attemptId = await freshAttempt(userId, 'claude');
+    const { token } = await issueRunToken(
+      handle.db,
+      { attemptId, userId, provider: 'claude' },
       60_000,
     );
 
@@ -197,9 +217,12 @@ describeDb('proxy forwarding path', () => {
 
   it('rejects an unknown provider without ever contacting the upstream', async () => {
     const vault = await freshVault();
-    app = await buildProxyServer({ vault, providerRoutes: testRoutes() });
-    const { token } = app.registry.issue(
-      { runId: 'run-1', userId: 'user-1', providers: ['not-a-real-provider'] },
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
+    const userId = await freshUser();
+    const attemptId = await freshAttempt(userId, 'not-a-real-provider');
+    const { token } = await issueRunToken(
+      handle.db,
+      { attemptId, userId, provider: 'not-a-real-provider' },
       60_000,
     );
 
@@ -214,10 +237,12 @@ describeDb('proxy forwarding path', () => {
 
   it('424s when the user has no stored credential for the provider', async () => {
     const vault = await freshVault();
-    app = await buildProxyServer({ vault, providerRoutes: testRoutes() });
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
     const userId = await freshUser();
-    const { token } = app.registry.issue(
-      { runId: 'run-1', userId, providers: ['claude'] },
+    const attemptId = await freshAttempt(userId, 'claude');
+    const { token } = await issueRunToken(
+      handle.db,
+      { attemptId, userId, provider: 'claude' },
       60_000,
     );
 
@@ -235,9 +260,11 @@ describeDb('proxy forwarding path', () => {
     const vault = await freshVault();
     const userId = await freshUser();
     await vault.putCredential(userId, 'claude', Buffer.from('sk-ant-the-real-key'));
-    app = await buildProxyServer({ vault, providerRoutes: testRoutes() });
-    const { token } = app.registry.issue(
-      { runId: 'run-1', userId, providers: ['claude'] },
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
+    const attemptId = await freshAttempt(userId, 'claude');
+    const { token } = await issueRunToken(
+      handle.db,
+      { attemptId, userId, provider: 'claude' },
       60_000,
     );
 
@@ -275,9 +302,11 @@ describeDb('proxy forwarding path', () => {
     const vault = await freshVault();
     const userId = await freshUser();
     await vault.putCredential(userId, 'claude', Buffer.from('sk-ant-the-real-key'));
-    app = await buildProxyServer({ vault, providerRoutes: testRoutes() });
-    const { token } = app.registry.issue(
-      { runId: 'run-1', userId, providers: ['claude'] },
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
+    const attemptId = await freshAttempt(userId, 'claude');
+    const { token } = await issueRunToken(
+      handle.db,
+      { attemptId, userId, provider: 'claude' },
       60_000,
     );
 
@@ -305,12 +334,14 @@ describeDb('proxy forwarding path', () => {
     const victim = await freshUser();
     const attacker = await freshUser();
     await vault.putCredential(victim, 'claude', Buffer.from('sk-ant-victims-key'));
-    app = await buildProxyServer({ vault, providerRoutes: testRoutes() });
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
 
     // The attacker's own token is scoped to the attacker's own userId server-side —
     // there is no field in the request the attacker could set to "become" the victim.
-    const { token } = app.registry.issue(
-      { runId: 'run-attacker', userId: attacker, providers: ['claude'] },
+    const attackerAttemptId = await freshAttempt(attacker, 'claude');
+    const { token } = await issueRunToken(
+      handle.db,
+      { attemptId: attackerAttemptId, userId: attacker, provider: 'claude' },
       60_000,
     );
 

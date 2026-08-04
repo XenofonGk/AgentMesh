@@ -1,15 +1,25 @@
 name: agentmesh
 
+networks:
+  # No route to the outside world. db, api, the proxy, and — joined dynamically by the
+  # orchestrator, not declared here — runner containers all sit on this network. It is
+  # the actual enforcement point for invariant 2 and invariant 3: a runner container has
+  # no default egress not because of anything inside the container, but because this is
+  # the only network it is ever attached to, and this network cannot reach anywhere.
+  internal:
+    internal: true
+
 services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
+    networks: [internal]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-agentmesh}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env}
       POSTGRES_DB: ${POSTGRES_DB:-agentmesh}
-    # Loopback only. Postgres holds the credential vault; it must not be reachable
-    # from the network just because someone ran `compose up` on a VPS.
+    # Loopback only on the host. Postgres holds the credential vault; it must not be
+    # reachable from the network just because someone ran `compose up` on a VPS.
     ports:
       - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
@@ -24,6 +34,40 @@ services:
       timeout: 5s
       retries: 20
 
+  proxy:
+    build:
+      context: .
+      dockerfile: infra/proxy.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # `internal` to be reachable by the API and by runner containers; the project's
+    # normal default network besides, for its own real egress to provider APIs — the
+    # one process that needs both. Deliberately no `ports:` entry: never published to
+    # the host, at any address, regardless of which interface it listens on inside its
+    # own container. See constants.ts and SECURITY.md → invariant 2.
+    networks: [internal, default]
+    environment:
+      NODE_ENV: production
+      PROXY_PORT: 3002
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_URL: postgres://${POSTGRES_USER:-agentmesh}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agentmesh}
+      VAULT_MASTER_KEY: '${VAULT_MASTER_KEY:?VAULT_MASTER_KEY is required — generate one with openssl rand -base64 32}'
+      VAULT_MASTER_KEY_VERSION: ${VAULT_MASTER_KEY_VERSION:-1}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   api:
     build:
       context: .
@@ -32,12 +76,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      proxy:
+        condition: service_healthy
+    networks: [internal]
     environment:
       NODE_ENV: production
       API_HOST: 0.0.0.0
       API_PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      PROXY_URL: http://proxy:3002
       DATABASE_URL: postgres://${POSTGRES_USER:-agentmesh}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agentmesh}
       # Required. The API refuses to start without a valid 32-byte key, and refuses to
       # start on the wrong one rather than presenting an empty vault.

@@ -26,3 +26,10 @@ export {
   PLACEHOLDER_ADMIN_PASSWORD,
 } from './auth/index.js';
 export type { LoginFailure, Session } from './auth/index.js';
+export {
+  issueRunToken,
+  resolveRunToken,
+  grantPermits,
+  revokeRunGrant,
+} from './run-grants.js';
+export type { RunGrant, IssuedRunToken } from './run-grants.js';

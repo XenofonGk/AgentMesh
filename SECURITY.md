@@ -85,8 +85,12 @@ area, the test must still exist and still pass.
 
 1. **No plaintext credential is ever written to disk, a log, a DB column, or an HTTP
    response.** All log payloads pass through `redact()` in `packages/core`.
-2. **The credential proxy binds to `127.0.0.1` only** — never `0.0.0.0`. The bind address
-   is a compile-time constant (`apps/proxy`), deliberately not configurable.
+2. **The credential proxy is never reachable from the host or the public internet.**
+   It listens on every interface _inside its own container_ — necessary so the runner
+   container that forwards through it can reach it at all — but is never given a
+   `ports:` entry in `compose.yaml`, and sits on an `internal: true` Docker network with
+   no route out. Reachability is enforced by network topology, not a bind address; see
+   `apps/proxy/src/constants.ts`.
 3. **Runner containers have no default outbound internet access.** Egress is an allowlist:
    the provider endpoints a run needs, plus domains explicitly permitted for that run.
 4. **A decrypted key exists only within a single request's scope, in proxy memory.** It is

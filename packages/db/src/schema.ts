@@ -19,6 +19,7 @@ import {
   customType,
   index,
   integer,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -217,3 +218,125 @@ export const vaultCanary = pgTable('vault_canary', {
     .default(sql`now()`),
   retiredAt: timestamptz('retired_at'),
 });
+
+/**
+ * The orchestrator: one submitted task (`runs`) fans out to N provider attempts
+ * (`attempts`) — the parallel bake-off from PLAN.md §D3. Attempts are independent by
+ * design: one provider failing must never affect the others, so nothing here models a
+ * dependency between sibling attempts.
+ */
+export const runStatus = pgEnum('run_status', [
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'cancelled',
+]);
+
+export const attemptStatus = pgEnum('attempt_status', [
+  'pending',
+  'running',
+  'succeeded',
+  'failed',
+  'timed_out',
+  'cancelled',
+]);
+
+export const runs = pgTable('runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  task: text('task').notNull(),
+  status: runStatus('status').notNull().default('pending'),
+  createdAt: timestamptz('created_at')
+    .notNull()
+    .default(sql`now()`),
+  completedAt: timestamptz('completed_at'),
+});
+
+/**
+ * `cost_usd`/`input_tokens`/`output_tokens` are nullable, not because they are
+ * optional — CLAUDE.md is explicit that every attempt records cost, latency, tokens,
+ * and outcome, since the eval loop (§6) depends on it — but because there is no adapter
+ * yet to report real usage from a provider response. Nullable here means "not known
+ * yet," never "not tracked": the columns exist from the first migration that has
+ * attempts at all, so nothing about the eval loop is retrofitted later. `latency_ms` and
+ * `status` have no such excuse and are always derivable from the container lifecycle
+ * itself, so they are populated for every attempt regardless of adapter support.
+ *
+ * `unique(run_id, provider)`: one attempt per provider per run — the bake-off model is
+ * N distinct providers racing, not N attempts at the same provider.
+ */
+export const attempts = pgTable(
+  'attempts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => runs.id, { onDelete: 'cascade' }),
+    /** 'claude' | 'gemini' | … — text, matching credentials.provider; a new adapter is a row, not a migration. */
+    provider: text('provider').notNull(),
+    status: attemptStatus('status').notNull().default('pending'),
+    /** Set once the orchestrator has actually created the sandbox for this attempt. */
+    containerId: text('container_id'),
+    costUsd: numeric('cost_usd', { precision: 12, scale: 6 }),
+    latencyMs: integer('latency_ms'),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    /** Short machine-readable outcome tag once the adapter exists to produce one. */
+    outcome: text('outcome'),
+    errorMessage: text('error_message'),
+    createdAt: timestamptz('created_at')
+      .notNull()
+      .default(sql`now()`),
+    startedAt: timestamptz('started_at'),
+    completedAt: timestamptz('completed_at'),
+  },
+  (table) => [
+    uniqueIndex('attempts_run_id_provider_idx').on(table.runId, table.provider),
+    index('attempts_run_id_idx').on(table.runId),
+  ],
+);
+
+/**
+ * Run grants — what a runner container's token is entitled to, shared between the API
+ * (which issues one per attempt it starts) and the proxy (which resolves one on every
+ * forwarded request). This table exists because those are two separate processes: an
+ * earlier, single-process design kept grants in an in-memory map inside the proxy only,
+ * which stopped working the moment a second process needed to issue them. Postgres is
+ * the channel both processes already trust, so this reuses that rather than inventing a
+ * bespoke network protocol between the API and the proxy — see PLAN.md history.
+ *
+ * Same shape and same reasoning as `sessions`: `token_hash` is SHA-256 of the run
+ * token, never the token itself. The token is a bearer credential the runner
+ * presents — invariant 1 applies to it exactly as to a provider key, so a database dump
+ * must not be a set of usable grants.
+ *
+ * One provider per grant, not an array: the bake-off model is one attempt, one
+ * provider, one container, so a grant scoped to exactly the attempt it was issued for
+ * is the whole entitlement — there is no case where a single runner legitimately needs
+ * more than one provider's credential.
+ */
+export const runGrants = pgTable(
+  'run_grants',
+  {
+    tokenHash: bytea('token_hash').primaryKey(),
+    attemptId: uuid('attempt_id')
+      .notNull()
+      .references(() => attempts.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    createdAt: timestamptz('created_at')
+      .notNull()
+      .default(sql`now()`),
+    expiresAt: timestamptz('expires_at').notNull(),
+    revokedAt: timestamptz('revoked_at'),
+  },
+  (table) => [
+    index('run_grants_attempt_id_idx').on(table.attemptId),
+    index('run_grants_expires_at_idx').on(table.expiresAt),
+  ],
+);
