@@ -68,6 +68,48 @@ services:
       retries: 10
       start_period: 10s
 
+  # Owns the Docker socket so the API never has to. A socket mount is host-root-
+  # equivalent; the API is the most exposed process in this system (it's what a
+  # browser talks to), so the two must never share a container. This process is the
+  # containment: its HTTP request schema has no field for an arbitrary image,
+  # `Privileged`, or a bind mount outside the workspace it generates itself. See
+  # apps/broker/src/server.ts and allowlist.ts.
+  broker:
+    build:
+      context: .
+      dockerfile: infra/broker.Dockerfile
+    restart: unless-stopped
+    # `internal` only — reachable by the API, never by the proxy or the host. It needs
+    # no route out; it never calls anything, it's only ever called.
+    networks: [internal]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Bind-mounted at the *same path* on both sides on purpose: this container talks
+      # to the host's real Docker daemon (docker-outside-of-docker), so a runner
+      # container it spawns is a sibling, not a child — the host path it passes as a
+      # bind-mount source for that sibling has to be a path the host itself can
+      # resolve, not a path meaningful only inside this container's own filesystem.
+      - '${AGENTMESH_WORKSPACES_DIR:-/var/lib/agentmesh/workspaces}:/var/lib/agentmesh/workspaces'
+    environment:
+      NODE_ENV: production
+      BROKER_HOST: 0.0.0.0
+      BROKER_PORT: 3003
+      WORKSPACE_ROOT: /var/lib/agentmesh/workspaces
+      RUNNER_NETWORK: internal
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   api:
     build:
       context: .
@@ -78,6 +120,8 @@ services:
         condition: service_healthy
       proxy:
         condition: service_healthy
+      broker:
+        condition: service_healthy
     networks: [internal]
     environment:
       NODE_ENV: production
@@ -86,6 +130,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       PROXY_URL: http://proxy:3002
+      BROKER_URL: http://broker:3003
       DATABASE_URL: postgres://${POSTGRES_USER:-agentmesh}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agentmesh}
       # Required. The API refuses to start without a valid 32-byte key, and refuses to
       # start on the wrong one rather than presenting an empty vault.

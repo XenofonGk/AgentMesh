@@ -10,6 +10,11 @@ const EnvSchema = z.object({
   WEB_ORIGIN: z.string().url().default('http://localhost:3000'),
   /** Reachable only from the `internal` network — see compose.yaml and SECURITY.md. */
   PROXY_URL: z.string().url().default('http://proxy:3002'),
+  /**
+   * The only Docker socket access the API ever gets — through this broker, never
+   * directly. Reachable only from the `internal` network, same reasoning as PROXY_URL.
+   */
+  BROKER_URL: z.string().url().default('http://broker:3003'),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
