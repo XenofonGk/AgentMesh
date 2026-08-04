@@ -114,6 +114,9 @@ importers:
       '@agentmesh/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@agentmesh/skills':
+        specifier: workspace:*
+        version: link:../../packages/skills
       zod:
         specifier: ^3.25.76
         version: 3.25.76

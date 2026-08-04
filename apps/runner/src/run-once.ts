@@ -3,8 +3,45 @@
  * and a mocked `fetch` instead of a real subprocess/network — `main.ts` itself is just
  * env-loading, adapter lookup, and process wiring around this.
  */
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type { AgentEvent, ModelAdapter, RunContext } from '@agentmesh/core';
+import { resolveSkillDelivery, type Skill } from '@agentmesh/skills';
 import type { RunnerConfig } from './config.js';
+
+/**
+ * Parses `AGENTMESH_SKILLS`. Not re-validated with `SkillFrontmatterSchema` here — the
+ * orchestrator only ever serializes skills that already passed `loadSkillsFromDir`'s
+ * validation on the API side, so this is a shape check against programmer error in that
+ * serialization, not a trust boundary against operator input the way `loader.ts` is.
+ */
+function parseSkills(raw: string | undefined): readonly Skill[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as Skill[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The Claude half of "same artifact, different delivery" (PLAN.md §5 Phase 4): writes
+ * each skill's `SKILL.md` into the workspace mount, under `.claude/skills/<name>/`,
+ * before the adapter's subprocess starts — Claude discovers skills there on its own,
+ * no adapter-side plumbing needed. The non-agentic half (`RunInput.systemPrompt`) needs
+ * no filesystem access at all, so it stays inline in `runAttempt` below.
+ */
+async function mountSkillFiles(
+  workspacePath: string,
+  files: ReadonlyArray<{ relativePath: string; contents: string }>,
+): Promise<void> {
+  for (const file of files) {
+    const fullPath = join(workspacePath, file.relativePath);
+    await mkdir(dirname(fullPath), { recursive: true });
+    await writeFile(fullPath, file.contents, 'utf8');
+  }
+}
 
 export async function reportEvent(
   apiUrl: string,
@@ -58,9 +95,21 @@ export async function runAttempt(
     workspacePath: config.AGENTMESH_WORKSPACE_PATH,
   };
 
+  const skills = parseSkills(config.AGENTMESH_SKILLS);
+  const delivery = resolveSkillDelivery(skills, adapter.capabilities.agentic);
+  if (delivery.mode === 'mount') {
+    await mountSkillFiles(config.AGENTMESH_WORKSPACE_PATH, delivery.files);
+  }
+  const runInput = {
+    task: config.AGENTMESH_TASK,
+    ...(delivery.mode === 'inline' && delivery.systemPrompt && {
+      systemPrompt: delivery.systemPrompt,
+    }),
+  };
+
   let sawDone = false;
   let succeeded = false;
-  for await (const event of adapter.run({ task: config.AGENTMESH_TASK }, ctx)) {
+  for await (const event of adapter.run(runInput, ctx)) {
     if (event.type === 'done') {
       sawDone = true;
       succeeded = event.outcome === 'succeeded';
