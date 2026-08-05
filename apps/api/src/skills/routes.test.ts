@@ -207,16 +207,25 @@ describeDb('skill routes', () => {
     });
     expect(put.statusCode).toBe(400);
 
+    // A bare '..' segment is collapsed by HTTP dot-segment normalization before it
+    // ever reaches routing (RFC 3986 §5.2.4) — `/skills/..` resolves to `/`, which 404s
+    // without our handler (or its SkillNameSchema check) ever running. That's a safe
+    // outcome, just not the 400 our own validation produces, so it's excluded here.
+    // '../../etc/passwd' has real segments either side of the dots and survives as one
+    // opaque :name param once percent-encoded (encodeURIComponent escapes the slashes),
+    // so it does reach the handler and is what actually exercises SkillNameSchema.
+    const traversal = encodeURIComponent('../../etc/passwd');
+
     const get = await built.server.inject({
       method: 'GET',
-      url: `/skills/${encodeURIComponent('..')}`,
+      url: `/skills/${traversal}`,
       headers: { cookie },
     });
     expect(get.statusCode).toBe(400);
 
     const del = await built.server.inject({
       method: 'DELETE',
-      url: `/skills/${encodeURIComponent('..')}`,
+      url: `/skills/${traversal}`,
       headers: { cookie },
     });
     expect(del.statusCode).toBe(400);
