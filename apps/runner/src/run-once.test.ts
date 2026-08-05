@@ -223,7 +223,10 @@ describe('runAttempt', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       const seen: RunInput[] = [];
-      await runAttempt(config({ AGENTMESH_PROVIDER: 'grok' }), recordingAdapter(false, seen));
+      await runAttempt(
+        config({ AGENTMESH_PROVIDER: 'grok' }),
+        recordingAdapter(false, seen),
+      );
 
       expect(seen).toHaveLength(1);
       expect(seen[0]?.systemPrompt).toBeUndefined();

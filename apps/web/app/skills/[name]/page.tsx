@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { parseSkillMarkdown } from '@agentmesh/skills';
+import { parseSkillMarkdown } from '@agentmesh/skills/parser';
 import {
   activateSkillVersion,
   deleteSkill,
@@ -285,7 +285,9 @@ export default function EditSkillPage(): React.JSX.Element | null {
           {live.ok ? 'Looks valid.' : (live.message ?? 'Validating…')}
         </p>
 
-        {saveError && <p className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
+        {saveError && (
+          <p className="text-sm text-red-600 dark:text-red-400">{saveError}</p>
+        )}
 
         <div className="flex gap-2">
           <button

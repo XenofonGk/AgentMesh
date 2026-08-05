@@ -113,7 +113,10 @@ describeDb('skill routes', () => {
     });
     expect(put.statusCode).toBe(401);
 
-    const del = await built.server.inject({ method: 'DELETE', url: '/skills/test-skill' });
+    const del = await built.server.inject({
+      method: 'DELETE',
+      url: '/skills/test-skill',
+    });
     expect(del.statusCode).toBe(401);
   });
 
@@ -146,7 +149,9 @@ describeDb('skill routes', () => {
     });
     expect(list.statusCode).toBe(200);
     expect(list.json()).toEqual({
-      skills: [{ name: 'test-skill', description: 'A skill used in tests.', valid: true }],
+      skills: [
+        { name: 'test-skill', description: 'A skill used in tests.', valid: true },
+      ],
     });
 
     const get = await built.server.inject({
@@ -240,7 +245,9 @@ describeDb('skill routes', () => {
         headers: { cookie },
       });
       expect(list.statusCode).toBe(200);
-      const { versions } = list.json() as { versions: { version: number; status: string }[] };
+      const { versions } = list.json() as {
+        versions: { version: number; status: string }[];
+      };
       expect(versions).toEqual([{ ...versions[0], version: 1, status: 'active' }]);
 
       const get = await built.server.inject({
@@ -248,7 +255,10 @@ describeDb('skill routes', () => {
         url: `/skills/vskill-a-${uniq}`,
         headers: { cookie },
       });
-      expect(get.json()).toEqual({ name: `vskill-a-${uniq}`, content: skillFor(`vskill-a-${uniq}`) });
+      expect(get.json()).toEqual({
+        name: `vskill-a-${uniq}`,
+        content: skillFor(`vskill-a-${uniq}`),
+      });
     });
 
     it('proposing a version records it as proposed and never touches the live file', async () => {
@@ -307,7 +317,10 @@ describeDb('skill routes', () => {
         headers: { cookie },
       });
       expect(get.statusCode).toBe(200);
-      expect(get.json()).toEqual({ name: `vskill-c-${uniq}`, content: skillFor(`vskill-c-${uniq}`) });
+      expect(get.json()).toEqual({
+        name: `vskill-c-${uniq}`,
+        content: skillFor(`vskill-c-${uniq}`),
+      });
     });
 
     it('rejecting a proposed version marks it rejected and never touches the live file', async () => {

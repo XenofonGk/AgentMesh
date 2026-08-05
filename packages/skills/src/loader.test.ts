@@ -33,7 +33,10 @@ describe('parseSkillMarkdown', () => {
   });
 
   it('rejects a file with no frontmatter block', () => {
-    const result = parseSkillMarkdown('just a markdown body, no frontmatter', '/x/SKILL.md');
+    const result = parseSkillMarkdown(
+      'just a markdown body, no frontmatter',
+      '/x/SKILL.md',
+    );
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.kind).toBe('no_frontmatter');

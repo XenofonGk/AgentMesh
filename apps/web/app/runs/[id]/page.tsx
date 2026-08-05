@@ -55,13 +55,14 @@ function DiffView({ diff }: { diff: string }) {
   return (
     <pre className="overflow-x-auto text-xs leading-relaxed">
       {diff.split('\n').map((line, index) => {
-        const color = line.startsWith('+') && !line.startsWith('+++')
-          ? 'bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-400'
-          : line.startsWith('-') && !line.startsWith('---')
-            ? 'bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-400'
-            : line.startsWith('@@')
-              ? 'text-blue-600 dark:text-blue-400'
-              : '';
+        const color =
+          line.startsWith('+') && !line.startsWith('+++')
+            ? 'bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-400'
+            : line.startsWith('-') && !line.startsWith('---')
+              ? 'bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-400'
+              : line.startsWith('@@')
+                ? 'text-blue-600 dark:text-blue-400'
+                : '';
         return (
           <div key={index} className={`px-2 ${color}`}>
             {line || ' '}

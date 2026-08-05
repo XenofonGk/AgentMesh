@@ -59,7 +59,10 @@ export async function createSkillVersion(
         .update(skillVersions)
         .set({ status: 'rejected' })
         .where(
-          and(eq(skillVersions.skillName, args.skillName), eq(skillVersions.status, 'active')),
+          and(
+            eq(skillVersions.skillName, args.skillName),
+            eq(skillVersions.status, 'active'),
+          ),
         );
     }
 
@@ -105,7 +108,9 @@ export async function getSkillVersion(
   const [row] = await db
     .select()
     .from(skillVersions)
-    .where(and(eq(skillVersions.skillName, skillName), eq(skillVersions.version, version)));
+    .where(
+      and(eq(skillVersions.skillName, skillName), eq(skillVersions.version, version)),
+    );
   return (row as SkillVersionRow | undefined) ?? null;
 }
 
@@ -117,7 +122,9 @@ export async function getActiveSkillVersion(
   const [row] = await db
     .select()
     .from(skillVersions)
-    .where(and(eq(skillVersions.skillName, skillName), eq(skillVersions.status, 'active')));
+    .where(
+      and(eq(skillVersions.skillName, skillName), eq(skillVersions.status, 'active')),
+    );
   return (row as SkillVersionRow | undefined) ?? null;
 }
 
@@ -136,7 +143,9 @@ export async function activateSkillVersion(
     const [existing] = await tx
       .select()
       .from(skillVersions)
-      .where(and(eq(skillVersions.skillName, skillName), eq(skillVersions.version, version)));
+      .where(
+        and(eq(skillVersions.skillName, skillName), eq(skillVersions.version, version)),
+      );
     if (!existing || existing.status !== 'proposed') {
       return null;
     }
@@ -144,12 +153,16 @@ export async function activateSkillVersion(
     await tx
       .update(skillVersions)
       .set({ status: 'rejected' })
-      .where(and(eq(skillVersions.skillName, skillName), eq(skillVersions.status, 'active')));
+      .where(
+        and(eq(skillVersions.skillName, skillName), eq(skillVersions.status, 'active')),
+      );
 
     const [updated] = await tx
       .update(skillVersions)
       .set({ status: 'active', activatedAt: new Date() })
-      .where(and(eq(skillVersions.skillName, skillName), eq(skillVersions.version, version)))
+      .where(
+        and(eq(skillVersions.skillName, skillName), eq(skillVersions.version, version)),
+      )
       .returning();
 
     return (updated as SkillVersionRow | undefined) ?? null;
@@ -189,5 +202,7 @@ export async function recordSkillVersionEvalResult(
   await db
     .update(skillVersions)
     .set({ evalResult })
-    .where(and(eq(skillVersions.skillName, skillName), eq(skillVersions.version, version)));
+    .where(
+      and(eq(skillVersions.skillName, skillName), eq(skillVersions.version, version)),
+    );
 }

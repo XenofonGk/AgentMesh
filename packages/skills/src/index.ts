@@ -6,10 +6,15 @@
  * is `eval.ts` — the rest of the improvement loop (OBSERVE, PROPOSE, GATE, VERSION) is
  * not here yet.
  */
-export { SkillFrontmatterSchema, SkillNameSchema, SkillDescriptionSchema } from './schema.js';
+export {
+  SkillFrontmatterSchema,
+  SkillNameSchema,
+  SkillDescriptionSchema,
+} from './schema.js';
 export type { Skill, SkillFrontmatter } from './schema.js';
-export { parseSkillMarkdown, loadSkill, loadSkillsFromDir } from './loader.js';
-export type { SkillValidationError } from './loader.js';
+export { parseSkillMarkdown } from './parser.js';
+export type { SkillValidationError } from './parser.js';
+export { loadSkill, loadSkillsFromDir } from './loader.js';
 export { resolveSkillDelivery, CLAUDE_SKILLS_DIR } from './delivery.js';
 export type { SkillDelivery, MountedSkillFile } from './delivery.js';
 export {

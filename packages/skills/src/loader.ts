@@ -1,80 +1,17 @@
 /**
- * Parses and validates a `SKILL.md` file — CLAUDE.md's "typed `Result`-style returns
- * for expected failures; throw only for programmer error." A malformed skill authored
- * by an operator is an expected failure (bad user input), not a programmer error, so
- * this never throws for it — `loadSkill`/`loadSkillsFromDir` return a `Result`.
+ * Filesystem-backed skill loading — server-side only (imports `node:fs`/`node:path`).
+ * The pure parsing logic lives in `parser.ts`; keep it that way so browser code can
+ * import `parseSkillMarkdown` without pulling Node built-ins into a webpack bundle.
  */
 import { readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { parse as parseYaml } from 'yaml';
 import type { Result } from '@agentmesh/core';
 import { ok, err } from '@agentmesh/core';
-import { SkillFrontmatterSchema, SkillBodySchema, type Skill } from './schema.js';
+import type { Skill } from './schema.js';
+import { parseSkillMarkdown, type SkillValidationError } from './parser.js';
 
-export type SkillValidationError =
-  | { kind: 'no_frontmatter'; sourcePath: string }
-  | { kind: 'invalid_frontmatter'; sourcePath: string; message: string }
-  | { kind: 'invalid_body'; sourcePath: string; message: string }
-  | { kind: 'read_error'; sourcePath: string; message: string };
-
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
-
-/**
- * Parses already-read SKILL.md text. Split from `loadSkill` so tests (and, later, an
- * in-app editor's live-validation preview — not built here, PLAN.md Phase 4) can
- * validate a string without touching the filesystem.
- */
-export function parseSkillMarkdown(
-  raw: string,
-  sourcePath: string,
-): Result<Skill, SkillValidationError> {
-  const match = FRONTMATTER_RE.exec(raw);
-  if (!match) {
-    return err({ kind: 'no_frontmatter', sourcePath });
-  }
-  const [, frontmatterRaw, body] = match;
-
-  let parsedYaml: unknown;
-  try {
-    parsedYaml = parseYaml(frontmatterRaw ?? '');
-  } catch (error) {
-    return err({
-      kind: 'invalid_frontmatter',
-      sourcePath,
-      message: `not valid YAML: ${error instanceof Error ? error.message : String(error)}`,
-    });
-  }
-
-  const frontmatter = SkillFrontmatterSchema.safeParse(parsedYaml);
-  if (!frontmatter.success) {
-    return err({
-      kind: 'invalid_frontmatter',
-      sourcePath,
-      message: frontmatter.error.issues
-        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
-        .join('; '),
-    });
-  }
-
-  const trimmedBody = (body ?? '').trim();
-  const bodyResult = SkillBodySchema.safeParse(trimmedBody);
-  if (!bodyResult.success) {
-    return err({
-      kind: 'invalid_body',
-      sourcePath,
-      message: bodyResult.error.issues.map((issue) => issue.message).join('; '),
-    });
-  }
-
-  return ok({
-    name: frontmatter.data.name,
-    description: frontmatter.data.description,
-    license: frontmatter.data.license,
-    allowedTools: frontmatter.data['allowed-tools'],
-    body: bodyResult.data,
-    sourcePath,
-  });
-}
+export type { SkillValidationError } from './parser.js';
+export { parseSkillMarkdown } from './parser.js';
 
 /** Loads and validates a single `SKILL.md` file from an absolute or relative path. */
 export async function loadSkill(

@@ -141,10 +141,7 @@ describeDb('agent event persistence', () => {
     });
 
     it('approves a file_edit event and records who reviewed it and when', async () => {
-      const [user] = await handle.db
-        .insert(users)
-        .values({})
-        .returning({ id: users.id });
+      const [user] = await handle.db.insert(users).values({}).returning({ id: users.id });
       const attemptId = await freshAttempt();
       await appendEvent(handle.db, fileEdit(attemptId, 'a.ts'));
       const [stored] = await listEventsAfter(handle.db, attemptId);
@@ -167,10 +164,7 @@ describeDb('agent event persistence', () => {
     });
 
     it('rejects a file_edit event', async () => {
-      const [user] = await handle.db
-        .insert(users)
-        .values({})
-        .returning({ id: users.id });
+      const [user] = await handle.db.insert(users).values({}).returning({ id: users.id });
       const attemptId = await freshAttempt();
       await appendEvent(handle.db, fileEdit(attemptId, 'a.ts'));
       const [stored] = await listEventsAfter(handle.db, attemptId);
@@ -186,10 +180,7 @@ describeDb('agent event persistence', () => {
     });
 
     it('refuses to review an event of a non-file_edit type', async () => {
-      const [user] = await handle.db
-        .insert(users)
-        .values({})
-        .returning({ id: users.id });
+      const [user] = await handle.db.insert(users).values({}).returning({ id: users.id });
       const attemptId = await freshAttempt();
       await appendEvent(handle.db, messageDelta(attemptId, 'hi'));
       const [stored] = await listEventsAfter(handle.db, attemptId);
@@ -205,10 +196,7 @@ describeDb('agent event persistence', () => {
     });
 
     it('returns null for an event id that does not belong to the given attempt', async () => {
-      const [user] = await handle.db
-        .insert(users)
-        .values({})
-        .returning({ id: users.id });
+      const [user] = await handle.db.insert(users).values({}).returning({ id: users.id });
       const attemptA = await freshAttempt();
       const attemptB = await freshAttempt();
       await appendEvent(handle.db, fileEdit(attemptA, 'a.ts'));

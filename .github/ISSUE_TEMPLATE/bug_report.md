@@ -1,9 +1,9 @@
 ---
 name: Bug report
 about: Something in AgentMesh isn't working as expected
-title: ""
+title: ''
 labels: bug
-assignees: ""
+assignees: ''
 ---
 
 ## What happened

@@ -1,9 +1,9 @@
 ---
 name: Feature request
 about: Suggest an idea for AgentMesh
-title: ""
+title: ''
 labels: enhancement
-assignees: ""
+assignees: ''
 ---
 
 ## What problem does this solve

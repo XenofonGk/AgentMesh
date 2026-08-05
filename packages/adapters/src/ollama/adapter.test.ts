@@ -97,14 +97,16 @@ describe('ollamaAdapter', () => {
   });
 
   it('streams message_delta events from NDJSON chunks split across multiple reads', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      chatResponse([
-        '{"message":{"role":"assistant","content":"Hel',
-        'lo"},"done":false}\n',
-        '{"message":{"role":"assistant","content":" world"},"done":false}\n',
-        '{"message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":5,"eval_count":2}\n',
-      ]),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        chatResponse([
+          '{"message":{"role":"assistant","content":"Hel',
+          'lo"},"done":false}\n',
+          '{"message":{"role":"assistant","content":" world"},"done":false}\n',
+          '{"message":{"role":"assistant","content":""},"done":true,"prompt_eval_count":5,"eval_count":2}\n',
+        ]),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     const events = [];
@@ -184,13 +186,15 @@ describe('ollamaAdapter', () => {
   });
 
   it('drops a malformed NDJSON line rather than throwing', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      chatResponse([
-        'not json at all\n',
-        '{"message":{"role":"assistant","content":"ok"},"done":false}\n',
-        '{"done":true}\n',
-      ]),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        chatResponse([
+          'not json at all\n',
+          '{"message":{"role":"assistant","content":"ok"},"done":false}\n',
+          '{"done":true}\n',
+        ]),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
     const events = [];

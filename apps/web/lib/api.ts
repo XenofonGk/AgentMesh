@@ -111,7 +111,9 @@ export async function listSkills(): Promise<SkillSummary[]> {
 }
 
 /** Fetch a single skill's raw `SKILL.md` content, or `null` if it doesn't exist. */
-export async function getSkill(name: string): Promise<{ name: string; content: string } | null> {
+export async function getSkill(
+  name: string,
+): Promise<{ name: string; content: string } | null> {
   const response = await apiFetch(`/skills/${encodeURIComponent(name)}`);
   if (!response.ok) return null;
   return (await response.json()) as { name: string; content: string };
@@ -200,7 +202,10 @@ export async function proposeSkillVersion(
 }
 
 /** GATE: promotes a `'proposed'` version to `'active'`, writing it to the live file. */
-export async function activateSkillVersion(name: string, version: number): Promise<boolean> {
+export async function activateSkillVersion(
+  name: string,
+  version: number,
+): Promise<boolean> {
   const response = await apiFetch(
     `/skills/${encodeURIComponent(name)}/versions/${version.toString()}/activate`,
     { method: 'POST' },
@@ -209,7 +214,10 @@ export async function activateSkillVersion(name: string, version: number): Promi
 }
 
 /** GATE: rejects a `'proposed'` version. Never touches the live file. */
-export async function rejectSkillVersion(name: string, version: number): Promise<boolean> {
+export async function rejectSkillVersion(
+  name: string,
+  version: number,
+): Promise<boolean> {
   const response = await apiFetch(
     `/skills/${encodeURIComponent(name)}/versions/${version.toString()}/reject`,
     { method: 'POST' },

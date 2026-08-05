@@ -26,9 +26,24 @@ const candidateSkill: Skill = { ...skill, body: 'Do the thing, better.' };
 describe('aggregateResults', () => {
   it('computes success rate, mean cost, and mean latency per provider', () => {
     const results: EvalSampleResult[] = [
-      { provider: 'claude', task: 't1', outcome: 'succeeded', usage: { costUsd: 0.1, latencyMs: 1000, inputTokens: 10, outputTokens: 20 } },
-      { provider: 'claude', task: 't2', outcome: 'failed', usage: { costUsd: 0.3, latencyMs: 2000, inputTokens: 10, outputTokens: 20 } },
-      { provider: 'gemini', task: 't1', outcome: 'succeeded', usage: { costUsd: 0.05, latencyMs: 500, inputTokens: 5, outputTokens: 10 } },
+      {
+        provider: 'claude',
+        task: 't1',
+        outcome: 'succeeded',
+        usage: { costUsd: 0.1, latencyMs: 1000, inputTokens: 10, outputTokens: 20 },
+      },
+      {
+        provider: 'claude',
+        task: 't2',
+        outcome: 'failed',
+        usage: { costUsd: 0.3, latencyMs: 2000, inputTokens: 10, outputTokens: 20 },
+      },
+      {
+        provider: 'gemini',
+        task: 't1',
+        outcome: 'succeeded',
+        usage: { costUsd: 0.05, latencyMs: 500, inputTokens: 5, outputTokens: 10 },
+      },
     ];
 
     const report = aggregateResults(results);
@@ -47,7 +62,12 @@ describe('aggregateResults', () => {
 
   it('treats a null usage as absent from the mean rather than as zero', () => {
     const results: EvalSampleResult[] = [
-      { provider: 'claude', task: 't1', outcome: 'succeeded', usage: { costUsd: 0.2, latencyMs: 1000, inputTokens: 1, outputTokens: 1 } },
+      {
+        provider: 'claude',
+        task: 't1',
+        outcome: 'succeeded',
+        usage: { costUsd: 0.2, latencyMs: 1000, inputTokens: 1, outputTokens: 1 },
+      },
       { provider: 'claude', task: 't2', outcome: 'succeeded', usage: null },
     ];
 
@@ -72,7 +92,12 @@ function fakeExecutor(outcomeFor: (provider: string) => EvalSampleResult['outcom
   executor: RunExecutor;
   calls: { task: string; provider: string; skillNames: string[]; attemptIndex: number }[];
 } {
-  const calls: { task: string; provider: string; skillNames: string[]; attemptIndex: number }[] = [];
+  const calls: {
+    task: string;
+    provider: string;
+    skillNames: string[];
+    attemptIndex: number;
+  }[] = [];
   const executor: RunExecutor = ({ task, provider, skills, attemptIndex }) => {
     calls.push({ task, provider, skillNames: skills.map((s) => s.name), attemptIndex });
     return Promise.resolve({
@@ -203,17 +228,16 @@ describe('loadTestSet', () => {
 
     const cases = await loadTestSet(path);
     expect(cases).toHaveLength(2);
-    expect(cases[0]).toEqual({ task: 'Add input validation', providers: ['claude', 'gemini'] });
+    expect(cases[0]).toEqual({
+      task: 'Add input validation',
+      providers: ['claude', 'gemini'],
+    });
     expect(cases[1]?.providers).toBeUndefined();
   });
 
   it('parses a JSON test set identically', async () => {
     const path = join(dir, 'held-out.json');
-    await writeFile(
-      path,
-      JSON.stringify({ cases: [{ task: 'do X' }] }),
-      'utf8',
-    );
+    await writeFile(path, JSON.stringify({ cases: [{ task: 'do X' }] }), 'utf8');
 
     const cases = await loadTestSet(path);
     expect(cases).toEqual([{ task: 'do X' }]);

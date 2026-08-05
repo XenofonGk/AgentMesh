@@ -54,14 +54,19 @@ function parseArgs(argv: readonly string[]): CliArgs {
   const testSetPath = flags.get('test-set');
   const providersRaw = flags.get('providers');
   if (!skillsDir || !testSetPath || !providersRaw) {
-    throw new Error('usage: eval-cli --skills <dir> --test-set <path> --providers <a,b,c> [--samples N] [--candidate-skills <dir>] [--concurrency N]');
+    throw new Error(
+      'usage: eval-cli --skills <dir> --test-set <path> --providers <a,b,c> [--samples N] [--candidate-skills <dir>] [--concurrency N]',
+    );
   }
 
   return {
     skillsDir,
     candidateSkillsDir: flags.get('candidate-skills'),
     testSetPath,
-    providers: providersRaw.split(',').map((p) => p.trim()).filter(Boolean),
+    providers: providersRaw
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean),
     samples: Number(flags.get('samples') ?? '3'),
     concurrency: Number(flags.get('concurrency') ?? '1'),
   };
@@ -85,7 +90,9 @@ function createHttpExecutor(apiUrl: string, sessionCookie: string): RunExecutor 
       }),
     });
     if (!startRes.ok) {
-      throw new Error(`failed to start run: ${startRes.status.toString()} ${await startRes.text()}`);
+      throw new Error(
+        `failed to start run: ${startRes.status.toString()} ${await startRes.text()}`,
+      );
     }
     const started = (await startRes.json()) as { runId: string };
 

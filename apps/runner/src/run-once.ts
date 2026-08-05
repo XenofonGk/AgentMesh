@@ -102,9 +102,10 @@ export async function runAttempt(
   }
   const runInput = {
     task: config.AGENTMESH_TASK,
-    ...(delivery.mode === 'inline' && delivery.systemPrompt && {
-      systemPrompt: delivery.systemPrompt,
-    }),
+    ...(delivery.mode === 'inline' &&
+      delivery.systemPrompt && {
+        systemPrompt: delivery.systemPrompt,
+      }),
   };
 
   let sawDone = false;

@@ -17,7 +17,9 @@ describe('resolveSkillDelivery', () => {
     expect(delivery.mode).toBe('mount');
     if (delivery.mode !== 'mount') return;
     expect(delivery.files).toHaveLength(1);
-    expect(delivery.files[0]?.relativePath).toBe(`${CLAUDE_SKILLS_DIR}/pdf-forms/SKILL.md`);
+    expect(delivery.files[0]?.relativePath).toBe(
+      `${CLAUDE_SKILLS_DIR}/pdf-forms/SKILL.md`,
+    );
     expect(delivery.files[0]?.contents).toContain('name: pdf-forms');
     expect(delivery.files[0]?.contents).toContain('Do the thing.');
   });

@@ -148,7 +148,10 @@ export interface EvaluateSkillOptions {
   concurrency?: number;
 }
 
-function providersForCase(testCase: EvalCase, defaultProviders: readonly string[]): readonly string[] {
+function providersForCase(
+  testCase: EvalCase,
+  defaultProviders: readonly string[],
+): readonly string[] {
   return testCase.providers ?? defaultProviders;
 }
 

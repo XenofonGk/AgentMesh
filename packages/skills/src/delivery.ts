@@ -31,7 +31,9 @@ function toSkillMarkdown(skill: Skill): string {
     `name: ${skill.name}`,
     `description: ${JSON.stringify(skill.description)}`,
     ...(skill.license ? [`license: ${JSON.stringify(skill.license)}`] : []),
-    ...(skill.allowedTools ? [`allowed-tools: ${JSON.stringify(skill.allowedTools)}`] : []),
+    ...(skill.allowedTools
+      ? [`allowed-tools: ${JSON.stringify(skill.allowedTools)}`]
+      : []),
   ];
   return `---\n${frontmatterLines.join('\n')}\n---\n\n${skill.body}\n`;
 }
