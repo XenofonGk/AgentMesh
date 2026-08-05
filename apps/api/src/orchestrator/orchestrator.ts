@@ -12,7 +12,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Database } from '@agentmesh/db';
 import { issueRunToken, revokeRunGrant, schema } from '@agentmesh/db';
-import type { SandboxProvider } from '@agentmesh/core';
+import type { SandboxProvider, Usage } from '@agentmesh/core';
 import type { Skill } from '@agentmesh/skills';
 
 /** Attempt states `finishAttempt` is allowed to transition out of — see its own doc comment. */
@@ -208,6 +208,8 @@ export class Orchestrator {
     outcome: {
       status: 'succeeded' | 'failed' | 'timed_out' | 'cancelled';
       errorMessage?: string;
+      /** From the `done` AgentEvent, when there is one — absent on timeout/cancellation. */
+      usage?: Usage | null;
     },
   ): Promise<void> {
     const timer = this.timeouts.get(attemptId);
@@ -216,12 +218,37 @@ export class Orchestrator {
       this.timeouts.delete(attemptId);
     }
 
+    const usage = outcome.usage;
+    const completedAt = new Date();
+
+    // schema.ts's doc comment on `attempts`: latency has "no excuse" to stay null the
+    // way cost/tokens can, since the container lifecycle always knows it, regardless of
+    // whether the adapter itself reports one (none currently do). Read `startedAt`
+    // before the update below so a container-lifecycle latency can fill in whenever the
+    // adapter's own `usage.latencyMs` is null.
+    const [existing] = await this.db
+      .select({ startedAt: attempts.startedAt })
+      .from(attempts)
+      .where(eq(attempts.id, attemptId));
+    const fallbackLatencyMs = existing?.startedAt
+      ? completedAt.getTime() - existing.startedAt.getTime()
+      : null;
+
     const [attempt] = await this.db
       .update(attempts)
       .set({
         status: outcome.status,
         errorMessage: outcome.errorMessage,
-        completedAt: new Date(),
+        completedAt,
+        latencyMs: usage?.latencyMs ?? fallbackLatencyMs,
+        ...(usage && {
+          // Drizzle's `numeric` column wants a string in, and returns one out (see
+          // schema.ts's own doc comment) — `costUsd` is the one field that needs the
+          // conversion; the rest are already `integer` columns matching `Usage`'s shape.
+          costUsd: usage.costUsd === null ? null : usage.costUsd.toString(),
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        }),
       })
       .where(and(eq(attempts.id, attemptId), inArray(attempts.status, OPEN_STATUSES)))
       .returning({ containerId: attempts.containerId });

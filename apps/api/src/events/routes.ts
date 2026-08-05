@@ -106,6 +106,7 @@ export async function registerEventRoutes(
     if (event.type === 'done' && orchestrator) {
       await orchestrator.finishAttempt(event.attemptId, {
         status: event.outcome,
+        usage: event.usage,
       });
     }
 
