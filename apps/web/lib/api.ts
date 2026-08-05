@@ -153,6 +153,70 @@ export async function deleteSkill(name: string): Promise<boolean> {
   return response.ok;
 }
 
+export interface SkillVersion {
+  id: string;
+  skillName: string;
+  version: number;
+  content: string;
+  status: 'proposed' | 'active' | 'rejected';
+  createdBy: string | null;
+  createdAt: string;
+  activatedAt: string | null;
+  evalResult: unknown;
+}
+
+/** VERSION history for a skill, newest first. */
+export async function listSkillVersions(name: string): Promise<SkillVersion[]> {
+  const response = await apiFetch(`/skills/${encodeURIComponent(name)}/versions`);
+  if (!response.ok) {
+    throw new Error(`failed to list skill versions: ${response.status.toString()}`);
+  }
+  const { versions } = (await response.json()) as { versions: SkillVersion[] };
+  return versions;
+}
+
+/** PROPOSE: records a new version without activating it — never touches the live file. */
+export async function proposeSkillVersion(
+  name: string,
+  content: string,
+): Promise<{ ok: true } | { ok: false; error: string; message?: string }> {
+  const response = await apiFetch(`/skills/${encodeURIComponent(name)}/versions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
+    return {
+      ok: false,
+      error: body.error ?? `http_${response.status.toString()}`,
+      ...(body.message !== undefined ? { message: body.message } : {}),
+    };
+  }
+  return { ok: true };
+}
+
+/** GATE: promotes a `'proposed'` version to `'active'`, writing it to the live file. */
+export async function activateSkillVersion(name: string, version: number): Promise<boolean> {
+  const response = await apiFetch(
+    `/skills/${encodeURIComponent(name)}/versions/${version.toString()}/activate`,
+    { method: 'POST' },
+  );
+  return response.ok;
+}
+
+/** GATE: rejects a `'proposed'` version. Never touches the live file. */
+export async function rejectSkillVersion(name: string, version: number): Promise<boolean> {
+  const response = await apiFetch(
+    `/skills/${encodeURIComponent(name)}/versions/${version.toString()}/reject`,
+    { method: 'POST' },
+  );
+  return response.ok;
+}
+
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 
 /** Approve or reject a `file_edit` event — Phase 3's diff-review UI. */

@@ -36,6 +36,13 @@
       "when": 1785873918939,
       "tag": "0004_skill_names",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785936475284,
+      "tag": "0005_skill_versions",
+      "breakpoints": true
     }
   ]
 }

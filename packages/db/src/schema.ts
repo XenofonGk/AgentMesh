@@ -354,6 +354,61 @@ export const runGrants = pgTable(
 );
 
 /**
+ * VERSION step of the improvement loop (PLAN.md §6). Skills live on disk as a single
+ * mutable `SKILL.md` per name (`AGENTMESH_SKILLS_DIR/<name>/SKILL.md`, `@agentmesh/skills`)
+ * — this table is the history behind that file: one immutable row per version, of which
+ * at most one per skill name is ever `'active'` (the version actually on disk, what
+ * `loadSkillsFromDir`/`delivery.ts` read).
+ *
+ * `skill_name` is free text, not a foreign key — skills are not DB rows, they are
+ * directories, and `SkillNameSchema` (kebab-case, `@agentmesh/skills`) is the only
+ * validation that ever applies to it, enforced at the API boundary before this table is
+ * touched, same as every filesystem-touching route in `skills/routes.ts`.
+ *
+ * `version` is a per-skill-name sequence starting at 1, assigned by whichever function
+ * inserts a row (never client-supplied) — simple and sufficient; a content hash would
+ * add nothing a human reads off a version list.
+ *
+ * `eval_result` is nullable JSON holding whatever `compareSkillVersions` (or
+ * `evaluateSkill`) produced for this version, if anyone ran it — evidence for the GATE
+ * step to look at, never a trigger the system acts on by itself (CLAUDE.md: no
+ * cron/background job promotes a version; a human always calls the activate route).
+ */
+export const skillVersionStatus = pgEnum('skill_version_status', [
+  'proposed',
+  'active',
+  'rejected',
+]);
+
+export const skillVersions = pgTable(
+  'skill_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    skillName: text('skill_name').notNull(),
+    version: integer('version').notNull(),
+    content: text('content').notNull(),
+    status: skillVersionStatus('status').notNull().default('proposed'),
+    /** Who authored this version. Null only for content seeded before any user existed. */
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamptz('created_at')
+      .notNull()
+      .default(sql`now()`),
+    activatedAt: timestamptz('activated_at'),
+    /** `CompareSkillVersionsReport | EvalReport` from `@agentmesh/skills`, as JSON. */
+    evalResult: jsonb('eval_result'),
+  },
+  (table) => [
+    uniqueIndex('skill_versions_name_version_idx').on(table.skillName, table.version),
+    index('skill_versions_name_idx').on(table.skillName),
+    // At most one active version per skill name — the GATE's job, enforced at the DB
+    // layer too rather than trusted to application code alone.
+    uniqueIndex('skill_versions_name_active_idx')
+      .on(table.skillName)
+      .where(sql`${table.status} = 'active'`),
+  ],
+);
+
+/**
  * The persisted form of `AgentEvent` (`packages/core/src/agent-event.ts`) — one row per
  * event, in the order it happened. `payload` is the whole event as JSON rather than a
  * column per `type`'s fields: the union has seven variants with almost no shared shape

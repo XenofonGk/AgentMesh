@@ -1,9 +1,136 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { parseSkillMarkdown } from '@agentmesh/skills';
-import { deleteSkill, getSkill, me, saveSkill } from '../../../lib/api';
+import {
+  activateSkillVersion,
+  deleteSkill,
+  getSkill,
+  listSkillVersions,
+  me,
+  rejectSkillVersion,
+  saveSkill,
+  type SkillVersion,
+} from '../../../lib/api';
+
+/**
+ * VERSION history list for this skill, with GATE actions. A simple list, not a diff
+ * viewer — proportionate to the rest of this app's UI (task instructions).
+ */
+function VersionHistory({ name }: { name: string }): React.JSX.Element {
+  const [versions, setVersions] = useState<SkillVersion[] | null>(null);
+  const [busyVersion, setBusyVersion] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    void listSkillVersions(name)
+      .then(setVersions)
+      .catch(() => {
+        setError('Failed to load version history.');
+      });
+  }, [name]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  async function handleActivate(version: number): Promise<void> {
+    setBusyVersion(version);
+    try {
+      const ok = await activateSkillVersion(name, version);
+      if (!ok) {
+        setError('Failed to activate that version.');
+        return;
+      }
+      refresh();
+    } finally {
+      setBusyVersion(null);
+    }
+  }
+
+  async function handleReject(version: number): Promise<void> {
+    setBusyVersion(version);
+    try {
+      const ok = await rejectSkillVersion(name, version);
+      if (!ok) {
+        setError('Failed to reject that version.');
+        return;
+      }
+      refresh();
+    } finally {
+      setBusyVersion(null);
+    }
+  }
+
+  if (versions === null) {
+    return <p className="text-sm text-neutral-500">Loading version history…</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <h2 className="text-lg font-semibold tracking-tight">Version history</h2>
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {versions.length === 0 ? (
+        <p className="text-sm text-neutral-500">No recorded versions yet.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {versions.map((v) => (
+            <li
+              key={v.id}
+              className="flex flex-col gap-1 rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span>
+                  v{v.version} —{' '}
+                  <span
+                    className={
+                      v.status === 'active'
+                        ? 'text-green-700 dark:text-green-400'
+                        : v.status === 'rejected'
+                          ? 'text-neutral-500'
+                          : 'text-amber-600 dark:text-amber-400'
+                    }
+                  >
+                    {v.status}
+                  </span>
+                </span>
+                <span className="text-xs text-neutral-500">
+                  {new Date(v.createdAt).toLocaleString()}
+                </span>
+              </div>
+              {v.evalResult !== null && v.evalResult !== undefined && (
+                <pre className="overflow-x-auto rounded bg-neutral-100 p-2 text-xs dark:bg-neutral-800">
+                  {JSON.stringify(v.evalResult, null, 2)}
+                </pre>
+              )}
+              {v.status === 'proposed' && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={busyVersion === v.version}
+                    onClick={() => void handleActivate(v.version)}
+                    className="rounded-md bg-neutral-900 px-3 py-1 text-xs font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+                  >
+                    Activate
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyVersion === v.version}
+                    onClick={() => void handleReject(v.version)}
+                    className="rounded-md border border-red-600 px-3 py-1 text-xs text-red-700 disabled:opacity-50 dark:text-red-400"
+                  >
+                    Reject
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /** Same debounced live-validation as `skills/page.tsx` — see that file's comment. */
 function useLiveValidation(content: string): { ok: boolean; message: string | null } {
@@ -178,6 +305,8 @@ export default function EditSkillPage(): React.JSX.Element | null {
           </button>
         </div>
       </form>
+
+      <VersionHistory name={params.name} />
     </main>
   );
 }
