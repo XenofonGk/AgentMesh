@@ -5,7 +5,11 @@
  * synthetic error + done instead of throwing.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentEvent, ModelAdapter } from '@agentmesh/core';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { AgentEvent, ModelAdapter, RunInput } from '@agentmesh/core';
+import type { Skill } from '@agentmesh/skills';
 import type { RunnerConfig } from './config.js';
 import { runAttempt } from './run-once.js';
 
@@ -143,5 +147,86 @@ describe('runAttempt', () => {
     const succeeded = await runAttempt(config(), fakeAdapter([done('failed')]));
 
     expect(succeeded).toBe(false);
+  });
+
+  describe('skill delivery — same artifact, different mechanism per PLAN.md §5', () => {
+    const skill: Skill = {
+      name: 'pdf-forms',
+      description: 'Fill and flatten PDF forms.',
+      license: undefined,
+      allowedTools: undefined,
+      body: 'Read the template, then fill the fields.',
+      sourcePath: '/skills/pdf-forms/SKILL.md',
+    };
+
+    function recordingAdapter(agentic: boolean, seen: RunInput[]): ModelAdapter {
+      return {
+        id: 'fake',
+        capabilities: { agentic, streaming: true, toolUse: agentic, maxContextTokens: 1 },
+        credentialSchema: null,
+        async *run(input: RunInput) {
+          seen.push(input);
+          yield done(agentic ? 'succeeded' : 'succeeded');
+        },
+      };
+    }
+
+    it('mounts SKILL.md into .claude/skills/ for an agentic adapter, without touching RunInput', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      vi.stubGlobal('fetch', fetchMock);
+      const workspace = await mkdtemp(join(tmpdir(), 'agentmesh-runner-'));
+
+      try {
+        const seen: RunInput[] = [];
+        await runAttempt(
+          config({
+            AGENTMESH_WORKSPACE_PATH: workspace,
+            AGENTMESH_SKILLS: JSON.stringify([skill]),
+          }),
+          recordingAdapter(true, seen),
+        );
+
+        expect(seen).toHaveLength(1);
+        expect(seen[0]?.systemPrompt).toBeUndefined();
+
+        const mounted = await readFile(
+          join(workspace, '.claude/skills/pdf-forms/SKILL.md'),
+          'utf8',
+        );
+        expect(mounted).toContain('name: pdf-forms');
+        expect(mounted).toContain('Read the template, then fill the fields.');
+      } finally {
+        await rm(workspace, { recursive: true, force: true });
+      }
+    });
+
+    it('inlines the skill body into RunInput.systemPrompt for a non-agentic adapter', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const seen: RunInput[] = [];
+      await runAttempt(
+        config({
+          AGENTMESH_PROVIDER: 'grok',
+          AGENTMESH_SKILLS: JSON.stringify([skill]),
+        }),
+        recordingAdapter(false, seen),
+      );
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]?.systemPrompt).toContain('pdf-forms');
+      expect(seen[0]?.systemPrompt).toContain('Read the template, then fill the fields.');
+    });
+
+    it('leaves RunInput untouched when no skills are attached', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const seen: RunInput[] = [];
+      await runAttempt(config({ AGENTMESH_PROVIDER: 'grok' }), recordingAdapter(false, seen));
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]?.systemPrompt).toBeUndefined();
+    });
   });
 });

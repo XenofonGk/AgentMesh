@@ -12,6 +12,7 @@
 import { createDatabase, loadMasterKey, Vault, wipe } from '@agentmesh/db';
 import { loadConfig } from './config.js';
 import { buildProxyServer } from './server.js';
+import { buildProviderRoutes } from './providers.js';
 import { PROXY_BIND_HOST } from './constants.js';
 
 async function main(): Promise<void> {
@@ -31,6 +32,7 @@ async function main(): Promise<void> {
     vault,
     db: database.db,
     logLevel: config.LOG_LEVEL,
+    providerRoutes: buildProviderRoutes(config.OLLAMA_URL),
   });
 
   const shutdown = async (signal: string): Promise<void> => {

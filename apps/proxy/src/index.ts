@@ -10,6 +10,11 @@
 export { PROXY_BIND_HOST, PROXY_DEFAULT_PORT } from './constants.js';
 export { buildProxyServer } from './server.js';
 export type { BuildProxyOptions, ProxyApp } from './server.js';
-export { DEFAULT_PROVIDER_ROUTES, resolveProviderRoute } from './providers.js';
+export {
+  DEFAULT_PROVIDER_ROUTES,
+  DEFAULT_OLLAMA_URL,
+  buildProviderRoutes,
+  resolveProviderRoute,
+} from './providers.js';
 export type { ProviderRoute } from './providers.js';
 export { filterInboundHeaders } from './headers.js';

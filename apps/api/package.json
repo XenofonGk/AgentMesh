@@ -14,6 +14,7 @@
   "dependencies": {
     "@agentmesh/core": "workspace:*",
     "@agentmesh/db": "workspace:*",
+    "@agentmesh/skills": "workspace:*",
     "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^11.1.0",
     "drizzle-orm": "^0.44.7",

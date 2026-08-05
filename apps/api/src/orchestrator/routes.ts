@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import type { Database } from '@agentmesh/db';
 import { schema } from '@agentmesh/db';
+import { loadSkillsFromDir, SkillNameSchema, type Skill } from '@agentmesh/skills';
 import { requireSession } from '../auth/guard.js';
 import type { Orchestrator, AttemptImage } from './orchestrator.js';
 
@@ -26,10 +27,39 @@ const ProviderName = z
 const StartRunBody = z.object({
   task: z.string().min(1).max(16384),
   providers: z.array(ProviderName).min(1).max(8),
+  /** Names of skills (`Skill.name`) to attach — resolved against `AGENTMESH_SKILLS_DIR`. */
+  skills: z.array(SkillNameSchema).max(32).optional(),
 });
 
 function imageForProvider(provider: string): AttemptImage {
   return { provider, image: `agentmesh/${provider}:latest`, command: ['run'] };
+}
+
+/**
+ * Resolves requested skill names against `AGENTMESH_SKILLS_DIR`. A directory that
+ * doesn't exist yet resolves to "no skills available" rather than an error — an
+ * operator who hasn't set up skills at all shouldn't have every run start failing, and
+ * `skillNames.length === 0` (the common case) never touches the filesystem regardless.
+ */
+async function resolveSkills(
+  skillsDir: string,
+  skillNames: readonly string[],
+): Promise<Skill[] | { error: string }> {
+  if (skillNames.length === 0) return [];
+
+  const loaded = await loadSkillsFromDir(skillsDir);
+  if (!loaded.ok) {
+    return { error: `unable to read skills directory: ${loaded.error.kind}` };
+  }
+
+  const byName = new Map(loaded.value.map((skill) => [skill.name, skill]));
+  const resolved: Skill[] = [];
+  for (const name of skillNames) {
+    const skill = byName.get(name);
+    if (!skill) return { error: `unknown skill: ${name}` };
+    resolved.push(skill);
+  }
+  return resolved;
 }
 
 export async function registerOrchestratorRoutes(
@@ -38,6 +68,7 @@ export async function registerOrchestratorRoutes(
   orchestrator: Orchestrator,
   proxyUrl: string,
   apiUrl: string,
+  skillsDir: string,
 ): Promise<void> {
   const guard = { preHandler: requireSession(db) };
 
@@ -47,12 +78,18 @@ export async function registerOrchestratorRoutes(
       return reply.code(400).send({ error: 'invalid_request' });
     }
 
+    const skills = await resolveSkills(skillsDir, body.data.skills ?? []);
+    if (!Array.isArray(skills)) {
+      return reply.code(400).send({ error: 'invalid_skills', message: skills.error });
+    }
+
     const result = await orchestrator.startRun({
       userId: request.userId!,
       task: body.data.task,
       proxyUrl,
       apiUrl,
       attempts: body.data.providers.map(imageForProvider),
+      skills,
     });
 
     return reply.code(201).send(result);

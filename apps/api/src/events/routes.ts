@@ -28,6 +28,7 @@ import {
   listEventsAfter,
   resolveRunToken,
   schema,
+  setEventReviewStatus,
 } from '@agentmesh/db';
 import type { AgentEvent } from '@agentmesh/core';
 import { requireSession } from '../auth/guard.js';
@@ -143,9 +144,18 @@ export async function registerEventRoutes(
         'access-control-allow-credentials': 'true',
       });
 
-      const write = (id: bigint | null, event: AgentEvent): void => {
+      // `reviewStatus` rides alongside the event, not inside it: it's API/DB metadata
+      // about an event (see schema.ts on `agentEvents.reviewStatus`), not part of
+      // `AgentEvent` itself, which CLAUDE.md forbids widening locally. Sent here purely
+      // so a reconnecting/reloading browser sees prior review verdicts without a second
+      // round trip; the diff-review UI reads it, nothing else needs to.
+      const write = (
+        id: bigint | null,
+        event: AgentEvent,
+        reviewStatus: 'pending' | 'approved' | 'rejected',
+      ): void => {
         if (id !== null) reply.raw.write(`id: ${id.toString()}\n`);
-        reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+        reply.raw.write(`data: ${JSON.stringify({ ...event, reviewStatus })}\n\n`);
       };
 
       // Replay first — anything the runner already reported before this tab connected —
@@ -153,10 +163,64 @@ export async function registerEventRoutes(
       // call is silently missed. A duplicate at the seam (an event both replayed and
       // published) is possible but harmless: `id` lets the browser de-duplicate by it.
       const backlog = await listEventsAfter(db, params.data.id);
-      for (const stored of backlog) write(stored.id, stored.event);
+      for (const stored of backlog) write(stored.id, stored.event, stored.reviewStatus);
 
-      const unsubscribe = subscribe(params.data.id, (event) => write(null, event));
+      // A freshly published (not-yet-persisted-when-read) event is always `pending` —
+      // that's the column default, and nothing reviews an event before it's ingested.
+      const unsubscribe = subscribe(params.data.id, (event) =>
+        write(null, event, 'pending'),
+      );
       request.raw.on('close', unsubscribe);
+    },
+  );
+
+  const ReviewParams = z.object({
+    id: z.string().uuid(),
+    eventId: z.string().regex(/^\d+$/, 'must be a positive integer'),
+  });
+  const ReviewBody = z.object({
+    status: z.enum(['approved', 'rejected']),
+  });
+
+  server.patch(
+    '/attempts/:id/events/:eventId/review',
+    { preHandler: requireSession(db) },
+    async (request, reply) => {
+      const params = ReviewParams.safeParse(request.params);
+      if (!params.success) {
+        return reply.code(400).send({ error: 'invalid_id' });
+      }
+
+      const body = ReviewBody.safeParse(request.body);
+      if (!body.success) {
+        return reply.code(400).send({ error: 'invalid_request' });
+      }
+
+      const [row] = await db
+        .select({ userId: runs.userId })
+        .from(attempts)
+        .innerJoin(runs, eq(attempts.runId, runs.id))
+        .where(eq(attempts.id, params.data.id));
+      if (!row || row.userId !== request.userId) {
+        return reply.code(404).send({ error: 'not_found' });
+      }
+
+      const reviewed = await setEventReviewStatus(
+        db,
+        BigInt(params.data.eventId),
+        params.data.id,
+        body.data.status,
+        request.userId!,
+      );
+      if (reviewed === null) {
+        return reply.code(404).send({ error: 'not_found' });
+      }
+
+      return reply.send({
+        eventId: reviewed.id.toString(),
+        reviewStatus: reviewed.reviewStatus,
+        reviewedAt: reviewed.reviewedAt?.toISOString() ?? null,
+      });
     },
   );
 }

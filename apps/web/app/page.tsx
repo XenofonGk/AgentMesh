@@ -6,11 +6,13 @@ import { me, startRun } from '../lib/api';
 
 /**
  * Only providers with a real adapter (`packages/adapters/src`) are selectable — see
- * PLAN.md Phase 3 for the rest. `gemini`, `deepseek`, and `grok` are not agentic (see
- * each adapter's own doc comment): they stream a plain response, neither edits files or
- * runs tools.
+ * PLAN.md Phase 3 for the rest. `gemini`, `deepseek`, `grok`, and `ollama` are not
+ * agentic (see each adapter's own doc comment): they stream a plain response, neither
+ * edits files or runs tools. `ollama` is also PLAN.md's no-credential control case —
+ * selecting it needs no stored credential at all, only a reachable `OLLAMA_URL` on the
+ * proxy (see `apps/proxy/src/providers.ts`).
  */
-const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek', 'grok'];
+const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek', 'grok', 'ollama'];
 
 export default function HomePage(): React.JSX.Element | null {
   const router = useRouter();
@@ -19,15 +21,20 @@ export default function HomePage(): React.JSX.Element | null {
   const [providers, setProviders] = useState<string[]>(['claude']);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    void me().then((user) => {
-      if (!user) {
-        router.replace('/login');
-        return;
-      }
-      setAuthChecked(true);
-    });
+    void me()
+      .then((user) => {
+        if (!user) {
+          router.replace('/login');
+          return;
+        }
+        setAuthChecked(true);
+      })
+      .catch(() => {
+        setAuthError('Could not reach the API. Is it running?');
+      });
   }, [router]);
 
   function toggleProvider(provider: string): void {
@@ -55,15 +62,28 @@ export default function HomePage(): React.JSX.Element | null {
     }
   }
 
+  if (authError) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-2 px-6 text-center">
+        <p className="text-sm text-red-600 dark:text-red-400">{authError}</p>
+      </main>
+    );
+  }
+
   if (!authChecked) return null;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 px-6">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">AgentMesh</h1>
-        <p className="mt-2 text-neutral-600 dark:text-neutral-400">
-          Describe a task and watch an agent work on it, live.
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">AgentMesh</h1>
+          <p className="mt-2 text-neutral-600 dark:text-neutral-400">
+            Describe a task and watch an agent work on it, live.
+          </p>
+        </div>
+        <a href="/skills" className="text-sm text-neutral-500 hover:underline">
+          Skills →
+        </a>
       </div>
 
       <form

@@ -251,6 +251,16 @@ export const runs = pgTable('runs', {
     .references(() => users.id, { onDelete: 'cascade' }),
   task: text('task').notNull(),
   status: runStatus('status').notNull().default('pending'),
+  /**
+   * Skill names (`Skill.name`, `@agentmesh/skills`) attached to this run, applied
+   * identically to every attempt — PLAN.md §5 Phase 4's "same artifact, different
+   * delivery." Deliberately just the names, not a join table: skills aren't versioned
+   * rows yet (that's Phase 5's improvement loop, §6 — "skills are versioned, immutable
+   * rows"), so there is nothing today for a foreign key to reference. A `jsonb` array
+   * of names is the whole entitlement until that exists. Nullable/default-empty rather
+   * than required: most runs select no skills.
+   */
+  skillNames: jsonb('skill_names').$type<string[]>().notNull().default([]),
   createdAt: timestamptz('created_at')
     .notNull()
     .default(sql`now()`),
@@ -344,6 +354,61 @@ export const runGrants = pgTable(
 );
 
 /**
+ * VERSION step of the improvement loop (PLAN.md §6). Skills live on disk as a single
+ * mutable `SKILL.md` per name (`AGENTMESH_SKILLS_DIR/<name>/SKILL.md`, `@agentmesh/skills`)
+ * — this table is the history behind that file: one immutable row per version, of which
+ * at most one per skill name is ever `'active'` (the version actually on disk, what
+ * `loadSkillsFromDir`/`delivery.ts` read).
+ *
+ * `skill_name` is free text, not a foreign key — skills are not DB rows, they are
+ * directories, and `SkillNameSchema` (kebab-case, `@agentmesh/skills`) is the only
+ * validation that ever applies to it, enforced at the API boundary before this table is
+ * touched, same as every filesystem-touching route in `skills/routes.ts`.
+ *
+ * `version` is a per-skill-name sequence starting at 1, assigned by whichever function
+ * inserts a row (never client-supplied) — simple and sufficient; a content hash would
+ * add nothing a human reads off a version list.
+ *
+ * `eval_result` is nullable JSON holding whatever `compareSkillVersions` (or
+ * `evaluateSkill`) produced for this version, if anyone ran it — evidence for the GATE
+ * step to look at, never a trigger the system acts on by itself (CLAUDE.md: no
+ * cron/background job promotes a version; a human always calls the activate route).
+ */
+export const skillVersionStatus = pgEnum('skill_version_status', [
+  'proposed',
+  'active',
+  'rejected',
+]);
+
+export const skillVersions = pgTable(
+  'skill_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    skillName: text('skill_name').notNull(),
+    version: integer('version').notNull(),
+    content: text('content').notNull(),
+    status: skillVersionStatus('status').notNull().default('proposed'),
+    /** Who authored this version. Null only for content seeded before any user existed. */
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamptz('created_at')
+      .notNull()
+      .default(sql`now()`),
+    activatedAt: timestamptz('activated_at'),
+    /** `CompareSkillVersionsReport | EvalReport` from `@agentmesh/skills`, as JSON. */
+    evalResult: jsonb('eval_result'),
+  },
+  (table) => [
+    uniqueIndex('skill_versions_name_version_idx').on(table.skillName, table.version),
+    index('skill_versions_name_idx').on(table.skillName),
+    // At most one active version per skill name — the GATE's job, enforced at the DB
+    // layer too rather than trusted to application code alone.
+    uniqueIndex('skill_versions_name_active_idx')
+      .on(table.skillName)
+      .where(sql`${table.status} = 'active'`),
+  ],
+);
+
+/**
  * The persisted form of `AgentEvent` (`packages/core/src/agent-event.ts`) — one row per
  * event, in the order it happened. `payload` is the whole event as JSON rather than a
  * column per `type`'s fields: the union has seven variants with almost no shared shape
@@ -355,6 +420,12 @@ export const runGrants = pgTable(
  * range scan instead of a timestamp comparison that ties in whenever two events share a
  * millisecond.
  */
+export const eventReviewStatus = pgEnum('event_review_status', [
+  'pending',
+  'approved',
+  'rejected',
+]);
+
 export const agentEvents = pgTable(
   'agent_events',
   {
@@ -365,6 +436,19 @@ export const agentEvents = pgTable(
     type: text('type').notNull(),
     /** The full `AgentEvent`, exactly as the adapter emitted it. */
     payload: jsonb('payload').notNull(),
+    /**
+     * Diff review (PLAN.md §5 Phase 3). Lives on the event row rather than a parallel
+     * table: a `file_edit` event *is* the reviewable unit, one row already exists per
+     * event, and a second table keyed by event id would only ever hold a 1:1 sidecar of
+     * these three columns. Meaningless for the other six variants — left `'pending'` and
+     * ignored by everything that isn't the diff-review UI. Deliberately absent from
+     * `AgentEvent` itself (`packages/core`): CLAUDE.md says that type is never widened
+     * locally, and review state is API/DB metadata about an event, not part of what an
+     * adapter emitted.
+     */
+    reviewStatus: eventReviewStatus('review_status').notNull().default('pending'),
+    reviewedBy: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+    reviewedAt: timestamptz('reviewed_at'),
     createdAt: timestamptz('created_at')
       .notNull()
       .default(sql`now()`),

@@ -14,6 +14,7 @@
   "dependencies": {
     "@agentmesh/adapters": "workspace:*",
     "@agentmesh/core": "workspace:*",
+    "@agentmesh/skills": "workspace:*",
     "zod": "^3.25.76"
   },
   "devDependencies": {

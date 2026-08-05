@@ -24,6 +24,14 @@ const EnvSchema = z.object({
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .default('info'),
+  /**
+   * Where Agent Skills (`SKILL.md` per subdirectory — `@agentmesh/skills`'s
+   * `loadSkillsFromDir`) live for this self-hosted instance. No existing convention to
+   * follow (PLAN.md Phase 4 names the standard but not a path), so this picks the
+   * simplest one: one operator-configurable env var, defaulting to a top-level
+   * `skills/` directory next to wherever the API process runs from.
+   */
+  AGENTMESH_SKILLS_DIR: z.string().min(1).default('./skills'),
 });
 
 export type Config = z.infer<typeof EnvSchema>;

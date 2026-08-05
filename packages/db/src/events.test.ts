@@ -9,7 +9,7 @@ import type { AgentEvent } from '@agentmesh/core';
 import { createDatabase, type DatabaseHandle } from './client.js';
 import { runMigrations } from './migrate.js';
 import { attempts, runs, users } from './schema.js';
-import { appendEvent, listEventsAfter } from './events.js';
+import { appendEvent, listEventsAfter, setEventReviewStatus } from './events.js';
 
 const CONNECTION = process.env['TEST_DATABASE_URL'] ?? '';
 
@@ -118,5 +118,110 @@ describeDb('agent event persistence', () => {
     const storedA = await listEventsAfter(handle.db, attemptA);
     expect(storedA).toHaveLength(1);
     expect((storedA[0]!.event as { text: string }).text).toBe('for a');
+  });
+
+  function fileEdit(attemptId: string, path: string): AgentEvent {
+    return {
+      attemptId,
+      provider: 'claude',
+      timestamp: new Date().toISOString(),
+      type: 'file_edit',
+      path,
+      diff: '--- a\n+++ b\n',
+    };
+  }
+
+  describe('review status', () => {
+    it('defaults every new event to pending', async () => {
+      const attemptId = await freshAttempt();
+      await appendEvent(handle.db, fileEdit(attemptId, 'a.ts'));
+
+      const [stored] = await listEventsAfter(handle.db, attemptId);
+      expect(stored?.reviewStatus).toBe('pending');
+    });
+
+    it('approves a file_edit event and records who reviewed it and when', async () => {
+      const [user] = await handle.db
+        .insert(users)
+        .values({})
+        .returning({ id: users.id });
+      const attemptId = await freshAttempt();
+      await appendEvent(handle.db, fileEdit(attemptId, 'a.ts'));
+      const [stored] = await listEventsAfter(handle.db, attemptId);
+
+      const reviewed = await setEventReviewStatus(
+        handle.db,
+        stored!.id,
+        attemptId,
+        'approved',
+        user!.id,
+      );
+
+      expect(reviewed).not.toBeNull();
+      expect(reviewed?.reviewStatus).toBe('approved');
+      expect(reviewed?.reviewedBy).toBe(user!.id);
+      expect(reviewed?.reviewedAt).not.toBeNull();
+
+      const [refetched] = await listEventsAfter(handle.db, attemptId);
+      expect(refetched?.reviewStatus).toBe('approved');
+    });
+
+    it('rejects a file_edit event', async () => {
+      const [user] = await handle.db
+        .insert(users)
+        .values({})
+        .returning({ id: users.id });
+      const attemptId = await freshAttempt();
+      await appendEvent(handle.db, fileEdit(attemptId, 'a.ts'));
+      const [stored] = await listEventsAfter(handle.db, attemptId);
+
+      const reviewed = await setEventReviewStatus(
+        handle.db,
+        stored!.id,
+        attemptId,
+        'rejected',
+        user!.id,
+      );
+      expect(reviewed?.reviewStatus).toBe('rejected');
+    });
+
+    it('refuses to review an event of a non-file_edit type', async () => {
+      const [user] = await handle.db
+        .insert(users)
+        .values({})
+        .returning({ id: users.id });
+      const attemptId = await freshAttempt();
+      await appendEvent(handle.db, messageDelta(attemptId, 'hi'));
+      const [stored] = await listEventsAfter(handle.db, attemptId);
+
+      const reviewed = await setEventReviewStatus(
+        handle.db,
+        stored!.id,
+        attemptId,
+        'approved',
+        user!.id,
+      );
+      expect(reviewed).toBeNull();
+    });
+
+    it('returns null for an event id that does not belong to the given attempt', async () => {
+      const [user] = await handle.db
+        .insert(users)
+        .values({})
+        .returning({ id: users.id });
+      const attemptA = await freshAttempt();
+      const attemptB = await freshAttempt();
+      await appendEvent(handle.db, fileEdit(attemptA, 'a.ts'));
+      const [stored] = await listEventsAfter(handle.db, attemptA);
+
+      const reviewed = await setEventReviewStatus(
+        handle.db,
+        stored!.id,
+        attemptB,
+        'approved',
+        user!.id,
+      );
+      expect(reviewed).toBeNull();
+    });
   });
 });

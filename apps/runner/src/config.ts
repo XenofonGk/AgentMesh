@@ -15,6 +15,13 @@ const EnvSchema = z.object({
   AGENTMESH_API_URL: z.string().url(),
   /** Where `DockerSandboxProvider` mounts the workspace — see docker-sandbox-provider.ts. */
   AGENTMESH_WORKSPACE_PATH: z.string().min(1).default('/workspace'),
+  /**
+   * JSON array of the skills attached to this run — `Skill[]` from `@agentmesh/skills`,
+   * serialized by the orchestrator (never re-validated here beyond "is it a string";
+   * `run-once.ts` is what actually parses it, since a parse failure there is a
+   * skill-delivery concern, not an env-shape one). Absent when no skills were selected.
+   */
+  AGENTMESH_SKILLS: z.string().optional(),
 });
 
 export type RunnerConfig = z.infer<typeof EnvSchema>;

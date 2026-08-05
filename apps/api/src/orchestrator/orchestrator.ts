@@ -13,6 +13,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import type { Database } from '@agentmesh/db';
 import { issueRunToken, revokeRunGrant, schema } from '@agentmesh/db';
 import type { SandboxProvider, Usage } from '@agentmesh/core';
+import type { Skill } from '@agentmesh/skills';
 
 /** Attempt states `finishAttempt` is allowed to transition out of — see its own doc comment. */
 const OPEN_STATUSES = ['pending', 'running'] as const;
@@ -44,6 +45,16 @@ export interface StartRunOptions {
   proxyUrl: string;
   /** Where the runner's entrypoint reports `AgentEvent`s — see `apps/api/src/events/routes.ts`. */
   apiUrl: string;
+  /**
+   * Already-loaded, already-validated skills (`@agentmesh/skills`'s `loadSkillsFromDir`
+   * — `routes.ts` is what resolves names to these) attached identically to every
+   * attempt in the run. PLAN.md §5 Phase 4: "same artifact, different delivery" — this
+   * class only serializes and hands them to each container via env; which delivery
+   * mode a given provider actually uses is decided in the runner (`apps/runner`), which
+   * is the one place that already knows the adapter's `capabilities.agentic`. Defaults
+   * to none so most `startRun` callers and every existing test are unaffected.
+   */
+  skills?: readonly Skill[];
 }
 
 export interface StartRunResult {
@@ -74,13 +85,25 @@ export class Orchestrator {
    * attempts stay fully independent.
    */
   async startRun(options: StartRunOptions): Promise<StartRunResult> {
+    const skills = options.skills ?? [];
     const [run] = await this.db
       .insert(runs)
-      .values({ userId: options.userId, task: options.task, status: 'running' })
+      .values({
+        userId: options.userId,
+        task: options.task,
+        status: 'running',
+        skillNames: skills.map((skill) => skill.name),
+      })
       .returning({ id: runs.id });
     if (!run) {
       throw new Error('failed to create run');
     }
+
+    // Serialized once, reused for every attempt: PLAN.md's "same artifact, different
+    // delivery" means every attempt gets the identical skill set — which delivery mode
+    // a given container actually uses is the runner's decision, not this class's (see
+    // `StartRunOptions.skills`'s doc comment).
+    const skillsEnv = skills.length > 0 ? JSON.stringify(skills) : undefined;
 
     const attemptIds: string[] = [];
     for (const attemptImage of options.attempts) {
@@ -91,6 +114,7 @@ export class Orchestrator {
         options.proxyUrl,
         options.apiUrl,
         attemptImage,
+        skillsEnv,
       );
       attemptIds.push(attemptId);
     }
@@ -105,6 +129,7 @@ export class Orchestrator {
     proxyUrl: string,
     apiUrl: string,
     attemptImage: AttemptImage,
+    skillsEnv: string | undefined,
   ): Promise<string> {
     const [attempt] = await this.db
       .insert(attempts)
@@ -132,6 +157,7 @@ export class Orchestrator {
           AGENTMESH_ATTEMPT_ID: attempt.id,
           AGENTMESH_PROVIDER: attemptImage.provider,
           AGENTMESH_TASK: task,
+          ...(skillsEnv !== undefined && { AGENTMESH_SKILLS: skillsEnv }),
         },
         networks: [RUNNER_NETWORK],
         resources: { cpus: 1, memoryMb: 2048 },

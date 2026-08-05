@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PROVIDER_ROUTES, resolveProviderRoute } from './providers.js';
+import {
+  DEFAULT_PROVIDER_ROUTES,
+  buildProviderRoutes,
+  resolveProviderRoute,
+} from './providers.js';
 
 describe('resolveProviderRoute', () => {
   it('resolves a known provider and path', () => {
@@ -61,13 +65,26 @@ describe('resolveProviderRoute', () => {
     expect(route?.authValuePrefix).toBe('Bearer ');
   });
 
+  it('resolves ollama with secretRequired false and the configured default origin', () => {
+    const route = resolveProviderRoute('ollama', '/api/chat');
+    expect(route?.origin).toBe('http://host.docker.internal:11434');
+    expect(route?.secretRequired).toBe(false);
+  });
+
   it('ships with exactly the routes documented, so an addition here is deliberate', () => {
-    expect(DEFAULT_PROVIDER_ROUTES).toHaveLength(4);
+    expect(DEFAULT_PROVIDER_ROUTES).toHaveLength(5);
     expect(DEFAULT_PROVIDER_ROUTES.map((route) => route.provider)).toEqual([
       'claude',
       'gemini',
       'deepseek',
       'grok',
+      'ollama',
     ]);
+  });
+
+  it('buildProviderRoutes lets an operator override the ollama origin', () => {
+    const routes = buildProviderRoutes('http://192.168.1.50:11434');
+    const route = resolveProviderRoute('ollama', '/api/chat', routes);
+    expect(route?.origin).toBe('http://192.168.1.50:11434');
   });
 });

@@ -22,6 +22,27 @@
       "when": 1785849694265,
       "tag": "0002_agent_events",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785873184026,
+      "tag": "0003_file_edit_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785873918939,
+      "tag": "0004_skill_names",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785936475284,
+      "tag": "0005_skill_versions",
+      "breakpoints": true
     }
   ]
 }

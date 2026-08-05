@@ -88,7 +88,12 @@ export const grokAdapter: ModelAdapter = {
         },
         body: JSON.stringify({
           model: 'grok-3',
-          messages: [{ role: 'user', content: input.task }],
+          messages: [
+            ...(input.systemPrompt
+              ? [{ role: 'system', content: input.systemPrompt }]
+              : []),
+            { role: 'user', content: input.task },
+          ],
           stream: true,
           stream_options: { include_usage: true },
         }),

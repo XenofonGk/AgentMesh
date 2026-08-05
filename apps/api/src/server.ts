@@ -10,6 +10,7 @@ import { registerCredentialRoutes } from './credentials/routes.js';
 import { registerOrchestratorRoutes } from './orchestrator/routes.js';
 import { Orchestrator } from './orchestrator/orchestrator.js';
 import { registerEventRoutes } from './events/routes.js';
+import { registerSkillRoutes } from './skills/routes.js';
 
 export interface BuildOptions {
   config: Config;
@@ -78,9 +79,11 @@ export async function buildServer({
       orchestrator,
       config.PROXY_URL,
       config.API_URL,
+      config.AGENTMESH_SKILLS_DIR,
     );
   }
   await registerEventRoutes(server, db.db, config.WEB_ORIGIN, orchestrator);
+  await registerSkillRoutes(server, db.db, config.AGENTMESH_SKILLS_DIR);
 
   /** Liveness: is the process up? Never touches the database. */
   server.get('/health', () => ({ status: 'ok' as const }));

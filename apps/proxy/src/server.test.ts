@@ -121,6 +121,14 @@ describeDb('proxy forwarding path', () => {
         authHeader: 'authorization',
         authValuePrefix: 'Bearer ',
       },
+      {
+        provider: 'ollama',
+        origin: upstream.origin,
+        paths: new Set(['/api/chat']),
+        authHeader: 'authorization',
+        authValuePrefix: 'Bearer ',
+        secretRequired: false,
+      },
     ];
   }
 
@@ -429,5 +437,42 @@ describeDb('proxy forwarding path', () => {
     // The attacker has no credential of their own — 424, never the victim's key.
     expect(response.statusCode).toBe(424);
     expect(upstream.requests).toHaveLength(0);
+  });
+
+  /**
+   * The no-credential path: `secretRequired: false` on the ollama route means the
+   * request forwards with no `vault.useCredential` call at all — proven here by never
+   * putting a credential in the vault for this user/provider at all, and still getting
+   * a 200 with no secret anywhere in the outbound headers.
+   */
+  it('forwards an ollama request with no stored credential and no secret injected', async () => {
+    const vault = await freshVault();
+    const userId = await freshUser();
+    // Deliberately no vault.putCredential call — there is nothing to store.
+    app = await buildProxyServer({ vault, db: handle.db, providerRoutes: testRoutes() });
+    const attemptId = await freshAttempt(userId, 'ollama');
+    const { token } = await issueRunToken(
+      handle.db,
+      { attemptId, userId, provider: 'ollama' },
+      60_000,
+    );
+
+    const response = await app.server.inject({
+      method: 'POST',
+      url: '/providers/ollama/api/chat',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      payload: JSON.stringify({ model: 'llama3.1', messages: [], stream: true }),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(upstream.requests).toHaveLength(1);
+    const upstreamRequest = upstream.requests[0]!;
+    expect(upstreamRequest.url).toBe('/api/chat');
+    // No secret exists for this provider — the run token itself must not leak upstream
+    // either, since filterInboundHeaders never lets `authorization` through inbound.
+    expect(upstreamRequest.headers['authorization']).toBeUndefined();
   });
 });

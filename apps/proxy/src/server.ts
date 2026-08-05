@@ -125,31 +125,53 @@ export async function buildProxyServer({
     const outboundHeaders = filterInboundHeaders(request.headers);
     const body = Buffer.isBuffer(request.body) ? request.body : EMPTY_BODY;
 
-    const result = await vault.useCredential(
-      grant.userId,
-      route.provider,
-      async (secret) => {
-        // The one unavoidable exception to "plaintext is always a Buffer, never a
-        // string" (crypto.ts, SECURITY.md → Zeroization): fetch's Headers only accept
-        // strings. This copy is scoped to this callback and never returned, logged, or
-        // stored — best-effort, same caveat as everywhere else a secret meets a string.
-        outboundHeaders[route.authHeader] = prefix + secret.toString('utf8');
+    let upstream: Response;
 
+    if (route.secretRequired === false) {
+      // Ollama's path — see providers.ts's doc on `secretRequired` and the adapter's
+      // own module comment. No vault lookup: there is no secret to fetch, and
+      // `outboundHeaders` never had one written into it (the run token that arrived in
+      // `route.authHeader` was read above, never copied into `outboundHeaders` by
+      // `filterInboundHeaders`, and nothing replaces it here either).
+      try {
         const init: RequestInit = { method: request.method, headers: outboundHeaders };
         if (body.length > 0) init.body = body;
-        return fetch(route.origin + upstreamPath, init);
-      },
-    );
+        upstream = await fetch(route.origin + upstreamPath, init);
+      } catch (error) {
+        request.log.warn({ err: redact(error) }, 'ollama upstream unreachable');
+        // 502: this proxy could not reach the configured OLLAMA_URL — a deployment/
+        // network problem, not a missing credential, so it gets its own code rather
+        // than reusing 424's "fix your vault entry" framing.
+        return reply.code(502).send({ error: 'upstream_unreachable' });
+      }
+    } else {
+      const result = await vault.useCredential(
+        grant.userId,
+        route.provider,
+        async (secret) => {
+          // The one unavoidable exception to "plaintext is always a Buffer, never a
+          // string" (crypto.ts, SECURITY.md → Zeroization): fetch's Headers only accept
+          // strings. This copy is scoped to this callback and never returned, logged, or
+          // stored — best-effort, same caveat as everywhere else a secret meets a string.
+          outboundHeaders[route.authHeader] = prefix + secret.toString('utf8');
 
-    if (!result.ok) {
-      request.log.warn({ err: redact(result.error) }, 'credential unavailable for run');
-      // 424: the request depends on configuration (a stored credential) that isn't
-      // there or isn't usable — not the runner's fault, not this proxy's fault, and
-      // not something retrying without the user fixing their vault entry will resolve.
-      return reply.code(424).send({ error: 'credential_unavailable' });
+          const init: RequestInit = { method: request.method, headers: outboundHeaders };
+          if (body.length > 0) init.body = body;
+          return fetch(route.origin + upstreamPath, init);
+        },
+      );
+
+      if (!result.ok) {
+        request.log.warn({ err: redact(result.error) }, 'credential unavailable for run');
+        // 424: the request depends on configuration (a stored credential) that isn't
+        // there or isn't usable — not the runner's fault, not this proxy's fault, and
+        // not something retrying without the user fixing their vault entry will resolve.
+        return reply.code(424).send({ error: 'credential_unavailable' });
+      }
+
+      upstream = result.value;
     }
 
-    const upstream = result.value;
     reply.code(upstream.status);
     const contentType = upstream.headers.get('content-type');
     if (contentType !== null) reply.header('content-type', contentType);
