@@ -42,15 +42,16 @@ const describeDb = available ? describe : describe.skip;
 describeDb('credential routes', () => {
   let handle: DatabaseHandle;
   let app: App | undefined;
-  const config = loadConfig({
-    DATABASE_URL: CONNECTION,
-    WEB_ORIGIN: 'http://localhost:3000',
-    LOG_LEVEL: 'silent',
-  });
+  let config: ReturnType<typeof loadConfig>;
 
   beforeAll(async () => {
     await runMigrations(CONNECTION);
     handle = createDatabase(CONNECTION);
+    config = loadConfig({
+      DATABASE_URL: CONNECTION,
+      WEB_ORIGIN: 'http://localhost:3000',
+      LOG_LEVEL: 'silent',
+    });
   });
 
   afterEach(async () => {
