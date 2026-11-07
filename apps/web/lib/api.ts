@@ -225,6 +225,50 @@ export async function rejectSkillVersion(
   return response.ok;
 }
 
+// --- Credentials ----------------------------------------------------------------
+
+export interface CredentialSummary {
+  provider: string;
+  keyVersion: number;
+  createdAt: string;
+}
+
+export async function listCredentials(): Promise<CredentialSummary[]> {
+  const response = await apiFetch('/credentials');
+  if (!response.ok) {
+    throw new Error(`failed to list credentials: ${response.status.toString()}`);
+  }
+  const { credentials } = (await response.json()) as {
+    credentials: CredentialSummary[];
+  };
+  return credentials;
+}
+
+export async function putCredential(
+  provider: string,
+  apiKey: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const response = await apiFetch(`/credentials/${encodeURIComponent(provider)}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ apiKey }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: body.error ?? `http_${response.status.toString()}` };
+  }
+  return { ok: true };
+}
+
+export async function deleteCredential(provider: string): Promise<boolean> {
+  const response = await apiFetch(`/credentials/${encodeURIComponent(provider)}`, {
+    method: 'DELETE',
+  });
+  return response.ok;
+}
+
+// --- Reviews --------------------------------------------------------------------
+
 export type ReviewStatus = 'pending' | 'approved' | 'rejected';
 
 /** Approve or reject a `file_edit` event — Phase 3's diff-review UI. */

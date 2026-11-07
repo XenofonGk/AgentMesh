@@ -81,9 +81,14 @@ export default function HomePage(): React.JSX.Element | null {
             Describe a task and watch an agent work on it, live.
           </p>
         </div>
-        <a href="/skills" className="text-sm text-neutral-500 hover:underline">
-          Skills →
-        </a>
+        <div className="flex gap-4">
+          <a href="/settings" className="text-sm text-neutral-500 hover:underline">
+            Settings
+          </a>
+          <a href="/skills" className="text-sm text-neutral-500 hover:underline">
+            Skills
+          </a>
+        </div>
       </div>
 
       <form
