@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import type { AgentEvent, Usage } from '@agentmesh/core';
 import Nav from '../../../components/Nav';
 import {
+  cancelAttempt,
   getRun,
   me,
   reviewFileEdit,
@@ -153,6 +154,7 @@ function AttemptPanel({
     {},
   );
   const [reviewPending, setReviewPending] = useState<Record<string, boolean>>({});
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     const source = subscribeToAttempt(attemptId);
@@ -175,6 +177,15 @@ function AttemptPanel({
       stored.event.type === 'done',
   )?.event;
 
+  async function handleCancel(): Promise<void> {
+    setCancelling(true);
+    await cancelAttempt(attemptId);
+    // No local state flip on success: the runner's own `done`/error event (outcome
+    // `'cancelled'`, reported by the orchestrator tearing the container down) is what
+    // actually updates `done` above via the SSE subscription already open — this
+    // just stops offering the button twice while that's in flight.
+  }
+
   async function handleReview(
     eventId: string,
     status: Extract<ReviewStatus, 'approved' | 'rejected'>,
@@ -194,8 +205,23 @@ function AttemptPanel({
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-neutral-200 dark:border-neutral-800">
       <header className="flex items-center justify-between border-b border-neutral-200 px-4 py-2 dark:border-neutral-800">
         <span className="font-medium">{provider}</span>
-        <span className="text-xs text-neutral-500">
-          {done ? done.outcome : 'running…'}
+        <span className="flex items-center gap-2 text-xs text-neutral-500">
+          {done ? (
+            done.outcome
+          ) : cancelling ? (
+            'stopping…'
+          ) : (
+            <>
+              running…
+              <button
+                type="button"
+                onClick={() => void handleCancel()}
+                className="rounded border border-neutral-300 px-1.5 py-0.5 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              >
+                Stop
+              </button>
+            </>
+          )}
         </span>
       </header>
       <div className="flex-1 overflow-y-auto p-4 text-sm">

@@ -164,11 +164,14 @@ describeDb('event routes', () => {
       const sessionToken = await createSession(handle.db, userId);
       const cookie = `${SESSION_COOKIE_NAME}=${sessionToken}`;
 
+      // ollama, not claude: this test is about the ingest route finishing the
+      // attempt, not about credentials, and claude needs a stored one to pass the
+      // preflight check in `orchestrator/routes.ts` now — ollama needs none.
       const startRun = await app.server.inject({
         method: 'POST',
         url: '/runs',
         headers: { cookie },
-        payload: { task: 'do the thing', providers: ['claude'] },
+        payload: { task: 'do the thing', providers: ['ollama'] },
       });
       expect(startRun.statusCode).toBe(201);
       const { attemptIds } = startRun.json<{ attemptIds: string[] }>();
@@ -183,7 +186,7 @@ describeDb('event routes', () => {
         headers: { 'x-agentmesh-run-token': runToken },
         payload: {
           attemptId,
-          provider: 'claude',
+          provider: 'ollama',
           timestamp: new Date().toISOString(),
           type: 'done',
           outcome: 'succeeded',
@@ -457,6 +460,102 @@ describeDb('event routes', () => {
         payload: { status: 'approved' },
       });
       expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe('cancel (POST /attempts/:id/cancel)', () => {
+    async function freshSession(): Promise<{ userId: string; cookie: string }> {
+      const email = `${randomUUID()}@example.test`;
+      const { userId } = await createUserWithPassword(
+        handle.db,
+        email,
+        'a genuinely long passphrase',
+      );
+      const token = await createSession(handle.db, userId);
+      return { userId, cookie: `${SESSION_COOKIE_NAME}=${token}` };
+    }
+
+    it('rejects an unauthenticated request', async () => {
+      app = await buildServer({ config, database: handle, sandbox: new FakeSandboxProvider() });
+      const { attemptId } = await freshAttempt();
+
+      const response = await app.server.inject({
+        method: 'POST',
+        url: `/attempts/${attemptId}/cancel`,
+      });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('404s for an attempt belonging to another user, and leaves it running', async () => {
+      const sandbox = new FakeSandboxProvider();
+      app = await buildServer({ config, database: handle, sandbox });
+      const { attemptId } = await freshAttempt();
+      const attacker = await freshSession();
+
+      const response = await app.server.inject({
+        method: 'POST',
+        url: `/attempts/${attemptId}/cancel`,
+        headers: { cookie: attacker.cookie },
+      });
+      expect(response.statusCode).toBe(404);
+      expect(sandbox.destroyCallCount).toBe(0);
+    });
+
+    it("stops the owner's attempt: destroys the sandbox and marks it cancelled", async () => {
+      const sandbox = new FakeSandboxProvider();
+      app = await buildServer({ config, database: handle, sandbox });
+      const { userId, attemptId } = await freshAttempt();
+      const token = await createSession(handle.db, userId);
+      const cookie = `${SESSION_COOKIE_NAME}=${token}`;
+      // The attempt needs a real container id for `finishAttempt` to have something
+      // to destroy — `freshAttempt()` inserts the row directly, bypassing the
+      // orchestrator, so this mirrors what `startAttempt` itself would have set.
+      const sandboxRecord = await sandbox.create({
+        id: attemptId,
+        image: 'agentmesh/claude:latest',
+        command: ['run'],
+        env: {},
+        networks: ['internal'],
+        resources: { cpus: 1, memoryMb: 2048 },
+        timeoutMs: 60_000,
+      });
+      await handle.db
+        .update(schema.attempts)
+        .set({ status: 'running', containerId: sandboxRecord.id })
+        .where(eq(schema.attempts.id, attemptId));
+
+      const response = await app.server.inject({
+        method: 'POST',
+        url: `/attempts/${attemptId}/cancel`,
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(204);
+      expect(sandbox.sandboxes.get(sandboxRecord.id)?.destroyed).toBe(true);
+
+      const [row] = await handle.db
+        .select({ status: schema.attempts.status })
+        .from(schema.attempts)
+        .where(eq(schema.attempts.id, attemptId));
+      expect(row?.status).toBe('cancelled');
+    });
+
+    it('409s cancelling an attempt that already finished', async () => {
+      const sandbox = new FakeSandboxProvider();
+      app = await buildServer({ config, database: handle, sandbox });
+      const { userId, attemptId } = await freshAttempt();
+      const token = await createSession(handle.db, userId);
+      const cookie = `${SESSION_COOKIE_NAME}=${token}`;
+      await handle.db
+        .update(schema.attempts)
+        .set({ status: 'succeeded', completedAt: new Date() })
+        .where(eq(schema.attempts.id, attemptId));
+
+      const response = await app.server.inject({
+        method: 'POST',
+        url: `/attempts/${attemptId}/cancel`,
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(409);
     });
   });
 });

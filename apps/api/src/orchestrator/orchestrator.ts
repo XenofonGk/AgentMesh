@@ -11,14 +11,19 @@
  */
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Database } from '@agentmesh/db';
-import { issueRunToken, revokeRunGrant, schema } from '@agentmesh/db';
+import { appendEvent, issueRunToken, revokeRunGrant, schema } from '@agentmesh/db';
 import type { SandboxProvider, Usage } from '@agentmesh/core';
 import type { Skill } from '@agentmesh/skills';
+import { publish } from '../events/event-bus.js';
 
 /** Attempt states `finishAttempt` is allowed to transition out of — see its own doc comment. */
 const OPEN_STATUSES = ['pending', 'running'] as const;
+type OpenStatus = (typeof OPEN_STATUSES)[number];
+function isOpenStatus(status: string): status is OpenStatus {
+  return (OPEN_STATUSES as readonly string[]).includes(status);
+}
 
-const { attempts, runs } = schema;
+const { attempts, runs, chats } = schema;
 
 /** Runner containers only ever see the internal network — never `default`. See compose.yaml. */
 const RUNNER_NETWORK = 'internal';
@@ -253,7 +258,7 @@ export class Orchestrator {
     // before the update below so a container-lifecycle latency can fill in whenever the
     // adapter's own `usage.latencyMs` is null.
     const [existing] = await this.db
-      .select({ startedAt: attempts.startedAt })
+      .select({ startedAt: attempts.startedAt, provider: attempts.provider })
       .from(attempts)
       .where(eq(attempts.id, attemptId));
     const fallbackLatencyMs = existing?.startedAt
@@ -283,9 +288,113 @@ export class Orchestrator {
     // (destroy, revoke) was already done by that call — nothing left to do here.
     if (!attempt) return;
 
+    // `succeeded`/`failed` always arrive via the ingest route (`events/routes.ts`),
+    // which already appended and published the runner's own real `done` event before
+    // calling this method — publishing another here would duplicate it. `timed_out`
+    // and `cancelled` are the two outcomes this class decides on its own, with no
+    // runner left alive to ever report a `done` event itself — without this, a
+    // browser watching the SSE stream never learns the attempt ended at all.
+    if ((outcome.status === 'timed_out' || outcome.status === 'cancelled') && existing) {
+      const doneEvent = {
+        attemptId,
+        provider: existing.provider,
+        timestamp: completedAt.toISOString(),
+        type: 'done' as const,
+        outcome: outcome.status,
+        usage: usage ?? null,
+      };
+      await appendEvent(this.db, doneEvent);
+      publish(doneEvent);
+    }
+
     if (attempt.containerId) {
       await this.sandbox.destroy(attempt.containerId);
     }
     await revokeRunGrant(this.db, attemptId);
+  }
+
+  private async ownsRun(runId: string, userId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: runs.id })
+      .from(runs)
+      .where(and(eq(runs.id, runId), eq(runs.userId, userId)));
+    return row !== undefined;
+  }
+
+  private async ownsChat(chatId: string, userId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: chats.id })
+      .from(chats)
+      .where(and(eq(chats.id, chatId), eq(chats.userId, userId)));
+    return row !== undefined;
+  }
+
+  /**
+   * Stops a still-open attempt: tears it down through the same `finishAttempt` a
+   * normal completion or timeout uses (destroy + revoke), just with `status:
+   * 'cancelled'`. Ownership is checked here, not by the caller — an attempt knows
+   * only its own `runId`/`chatId`, so this is the one place that can resolve "whose
+   * is this" for either kind without the route needing to know which.
+   */
+  async cancelAttempt(
+    attemptId: string,
+    userId: string,
+  ): Promise<'not_found' | 'already_terminal' | 'cancelled'> {
+    const [attempt] = await this.db
+      .select({ status: attempts.status, runId: attempts.runId, chatId: attempts.chatId })
+      .from(attempts)
+      .where(eq(attempts.id, attemptId));
+    if (!attempt) return 'not_found';
+
+    const owns = attempt.runId
+      ? await this.ownsRun(attempt.runId, userId)
+      : attempt.chatId
+        ? await this.ownsChat(attempt.chatId, userId)
+        : false;
+    if (!owns) return 'not_found';
+
+    if (!isOpenStatus(attempt.status)) return 'already_terminal';
+
+    await this.finishAttempt(attemptId, {
+      status: 'cancelled',
+      errorMessage: 'cancelled by user',
+    });
+    return 'cancelled';
+  }
+
+  /** Cancels every still-open attempt under a run or chat — the first step of
+   *  deleting one, so a container doesn't keep running against rows about to
+   *  disappear underneath it. */
+  private async cancelOpenAttempts(target: { runId: string } | { chatId: string }): Promise<void> {
+    const column = 'runId' in target ? attempts.runId : attempts.chatId;
+    const value = 'runId' in target ? target.runId : target.chatId;
+    const openRows = await this.db
+      .select({ id: attempts.id })
+      .from(attempts)
+      .where(and(eq(column, value), inArray(attempts.status, OPEN_STATUSES)));
+    for (const row of openRows) {
+      await this.finishAttempt(row.id, {
+        status: 'cancelled',
+        errorMessage: 'parent run deleted',
+      });
+    }
+  }
+
+  /** `true` if a matching, owned run was deleted. Cascades to its attempts and their
+   *  events (`schema.ts`'s `onDelete: 'cascade'`) — nothing to clean up by hand
+   *  beyond the still-running containers `cancelOpenAttempts` stops first. */
+  async deleteRun(runId: string, userId: string): Promise<boolean> {
+    if (!(await this.ownsRun(runId, userId))) return false;
+    await this.cancelOpenAttempts({ runId });
+    await this.db.delete(runs).where(eq(runs.id, runId));
+    return true;
+  }
+
+  /** Same shape as `deleteRun`, for a chat. */
+  async deleteChat(chatId: string, userId: string): Promise<boolean> {
+    if (!(await this.ownsChat(chatId, userId))) return false;
+    await this.cancelOpenAttempts({ chatId });
+    await this.db.delete(chats).where(eq(chats.id, chatId));
+    return true;
   }
 }

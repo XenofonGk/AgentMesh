@@ -81,8 +81,16 @@ export async function buildServer({
       config.PROXY_URL,
       config.API_URL,
       config.AGENTMESH_SKILLS_DIR,
+      vault,
     );
-    await registerChatRoutes(server, db.db, orchestrator, config.PROXY_URL, config.API_URL);
+    await registerChatRoutes(
+      server,
+      db.db,
+      orchestrator,
+      config.PROXY_URL,
+      config.API_URL,
+      vault,
+    );
   }
   await registerEventRoutes(server, db.db, config.WEB_ORIGIN, orchestrator);
   await registerSkillRoutes(server, db.db, config.AGENTMESH_SKILLS_DIR);

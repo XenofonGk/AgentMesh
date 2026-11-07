@@ -66,10 +66,12 @@ function formatTranscript(
   return lines.join('\n\n');
 }
 
-async function waitForAttempt(
-  db: Database,
-  attemptId: string,
-): Promise<{ succeeded: boolean; errorMessage: string | null }> {
+interface AttemptOutcome {
+  status: 'succeeded' | 'failed' | 'timed_out' | 'cancelled';
+  errorMessage: string | null;
+}
+
+async function waitForAttempt(db: Database, attemptId: string): Promise<AttemptOutcome> {
   const deadline = Date.now() + WAIT_TIMEOUT_MS;
   for (;;) {
     const [row] = await db
@@ -77,10 +79,10 @@ async function waitForAttempt(
       .from(attempts)
       .where(eq(attempts.id, attemptId));
     if (row && TERMINAL_STATUSES.has(row.status)) {
-      return { succeeded: row.status === 'succeeded', errorMessage: row.errorMessage };
+      return { status: row.status as AttemptOutcome['status'], errorMessage: row.errorMessage };
     }
     if (Date.now() > deadline) {
-      return { succeeded: false, errorMessage: 'timed out waiting for a reply' };
+      return { status: 'timed_out', errorMessage: 'timed out waiting for a reply' };
     }
     await sleep(POLL_INTERVAL_MS);
   }
@@ -152,9 +154,12 @@ export async function sendChatMessage(
     );
 
     const outcome = await waitForAttempt(db, attemptId);
-    const content = outcome.succeeded
-      ? (await reconstructReplyText(db, attemptId)) || '(empty reply)'
-      : `⚠️ ${provider} failed: ${outcome.errorMessage ?? 'unknown error'}`;
+    const content =
+      outcome.status === 'succeeded'
+        ? (await reconstructReplyText(db, attemptId)) || '(empty reply)'
+        : outcome.status === 'cancelled'
+          ? `⏹ ${provider} was stopped.`
+          : `⚠️ ${provider} failed: ${outcome.errorMessage ?? 'unknown error'}`;
 
     const [reply] = await db
       .insert(chatMessages)
@@ -162,6 +167,10 @@ export async function sendChatMessage(
       .returning();
     if (!reply) throw new Error('failed to record chat reply');
     newRows.push(reply);
+
+    // Cancelling one provider's turn stops the round — the point of a "Stop" button
+    // is to stop, not to still run every provider after the one actually cancelled.
+    if (outcome.status === 'cancelled') break;
   }
 
   return newRows;

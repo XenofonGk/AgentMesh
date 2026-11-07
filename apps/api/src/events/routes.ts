@@ -174,6 +174,29 @@ export async function registerEventRoutes(
     },
   );
 
+  if (orchestrator) {
+    server.post(
+      '/attempts/:id/cancel',
+      { preHandler: requireSession(db) },
+      async (request, reply) => {
+        const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+        if (!params.success) {
+          return reply.code(400).send({ error: 'invalid_id' });
+        }
+
+        const result = await orchestrator.cancelAttempt(params.data.id, request.userId!);
+        if (result === 'not_found') {
+          return reply.code(404).send({ error: 'not_found' });
+        }
+        if (result === 'already_terminal') {
+          return reply.code(409).send({ error: 'already_terminal' });
+        }
+
+        return reply.code(204).send();
+      },
+    );
+  }
+
   const ReviewParams = z.object({
     id: z.string().uuid(),
     eventId: z.string().regex(/^\d+$/, 'must be a positive integer'),

@@ -90,13 +90,26 @@ export interface RunSummary {
   completedAt: string | null;
 }
 
-export async function listRuns(): Promise<RunSummary[]> {
-  const response = await apiFetch('/runs');
+export async function listRuns(before?: string): Promise<RunSummary[]> {
+  const qs = before ? `?before=${encodeURIComponent(before)}` : '';
+  const response = await apiFetch(`/runs${qs}`);
   if (!response.ok) {
     throw new Error(`failed to list runs: ${response.status.toString()}`);
   }
   const { runs } = (await response.json()) as { runs: RunSummary[] };
   return runs;
+}
+
+export async function deleteRun(runId: string): Promise<boolean> {
+  const response = await apiFetch(`/runs/${runId}`, { method: 'DELETE' });
+  return response.ok;
+}
+
+/** 204 on cancelled, `false` if the attempt was already done (409) or gone (404) —
+ *  both are fine to treat the same client-side, there's nothing left to cancel. */
+export async function cancelAttempt(attemptId: string): Promise<boolean> {
+  const response = await apiFetch(`/attempts/${attemptId}/cancel`, { method: 'POST' });
+  return response.ok;
 }
 
 /**
@@ -303,6 +316,10 @@ export interface ChatMessage {
 
 export interface ChatDetail extends ChatSummary {
   messages: ChatMessage[];
+  /** The attempt currently running this chat's turn, if any — lets the UI show
+   *  which provider is replying right now and offer a Stop button, even though
+   *  `sendChatMessage` below doesn't return until the whole round is done. */
+  runningAttempt: { id: string; provider: string } | null;
 }
 
 async function apiError(response: Response, fallback: string): Promise<Error> {
@@ -322,13 +339,19 @@ export async function createChat(providers: string[]): Promise<{ chatId: string 
   return (await response.json()) as { chatId: string };
 }
 
-export async function listChats(): Promise<ChatSummary[]> {
-  const response = await apiFetch('/chats');
+export async function listChats(before?: string): Promise<ChatSummary[]> {
+  const qs = before ? `?before=${encodeURIComponent(before)}` : '';
+  const response = await apiFetch(`/chats${qs}`);
   if (!response.ok) {
     throw new Error(`failed to list chats: ${response.status.toString()}`);
   }
   const { chats } = (await response.json()) as { chats: ChatSummary[] };
   return chats;
+}
+
+export async function deleteChat(chatId: string): Promise<boolean> {
+  const response = await apiFetch(`/chats/${chatId}`, { method: 'DELETE' });
+  return response.ok;
 }
 
 export async function getChat(chatId: string): Promise<ChatDetail | null> {

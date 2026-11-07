@@ -9,8 +9,8 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { desc, eq } from 'drizzle-orm';
-import type { Database } from '@agentmesh/db';
+import { and, desc, eq, lt } from 'drizzle-orm';
+import type { Database, Vault } from '@agentmesh/db';
 import { schema } from '@agentmesh/db';
 import { loadSkillsFromDir, SkillNameSchema, type Skill } from '@agentmesh/skills';
 import { requireSession } from '../auth/guard.js';
@@ -70,6 +70,7 @@ export async function registerOrchestratorRoutes(
   proxyUrl: string,
   apiUrl: string,
   skillsDir: string,
+  vault?: Vault,
 ): Promise<void> {
   const guard = { preHandler: requireSession(db) };
 
@@ -84,7 +85,7 @@ export async function registerOrchestratorRoutes(
       return reply.code(400).send({ error: 'invalid_skills', message: skills.error });
     }
 
-    const missing = await missingCredentials(db, request.userId!, body.data.providers);
+    const missing = await missingCredentials(vault, request.userId!, body.data.providers);
     if (missing.length > 0) {
       return reply.code(400).send({
         error: 'missing_credential',
@@ -107,8 +108,16 @@ export async function registerOrchestratorRoutes(
 
   // Newest first, scoped to the caller — the run-history list the web UI's `/runs`
   // page needs. A summary shape only: no per-attempt detail, that's what `/runs/:id`
-  // (and its SSE events) are for.
+  // (and its SSE events) are for. `?before=<ISO timestamp>` pages backward in time —
+  // a cursor on `createdAt` rather than an offset, so a run created between two page
+  // loads can't shift later rows onto an already-seen page.
+  const ListRunsQuery = z.object({ before: z.string().datetime().optional() });
   server.get('/runs', guard, async (request, reply) => {
+    const query = ListRunsQuery.safeParse(request.query);
+    if (!query.success) {
+      return reply.code(400).send({ error: 'invalid_query' });
+    }
+
     const rows = await db
       .select({
         id: runs.id,
@@ -118,9 +127,13 @@ export async function registerOrchestratorRoutes(
         completedAt: runs.completedAt,
       })
       .from(runs)
-      .where(eq(runs.userId, request.userId!))
+      .where(
+        query.data.before
+          ? and(eq(runs.userId, request.userId!), lt(runs.createdAt, new Date(query.data.before)))
+          : eq(runs.userId, request.userId!),
+      )
       .orderBy(desc(runs.createdAt))
-      .limit(100);
+      .limit(50);
 
     return reply.send({ runs: rows });
   });
@@ -162,5 +175,19 @@ export async function registerOrchestratorRoutes(
         completedAt: attempt.completedAt,
       })),
     });
+  });
+
+  server.delete('/runs/:id', guard, async (request, reply) => {
+    const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+    if (!params.success) {
+      return reply.code(400).send({ error: 'invalid_id' });
+    }
+
+    const deleted = await orchestrator.deleteRun(params.data.id, request.userId!);
+    if (!deleted) {
+      return reply.code(404).send({ error: 'not_found' });
+    }
+
+    return reply.code(204).send();
   });
 }

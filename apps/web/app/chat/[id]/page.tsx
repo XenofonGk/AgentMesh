@@ -3,7 +3,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Nav from '../../../components/Nav';
-import { getChat, sendChatMessage, me, type ChatDetail } from '../../../lib/api';
+import {
+  cancelAttempt,
+  getChat,
+  sendChatMessage,
+  me,
+  type ChatDetail,
+  type ChatMessage,
+} from '../../../lib/api';
+
+const POLL_INTERVAL_MS = 2000;
+
+/** Merges by id, keeping arrival order — what the POST response and the progress
+ *  poll both need, since a message can land in either and must not show twice. */
+function mergeMessages(
+  current: readonly ChatMessage[],
+  incoming: readonly ChatMessage[],
+): ChatMessage[] {
+  const seen = new Set(current.map((m) => m.id));
+  const added = incoming.filter((m) => !seen.has(m.id));
+  return added.length > 0 ? [...current, ...added] : [...current];
+}
 
 function roleColor(role: string): string {
   if (role === 'user') return 'text-neutral-900 dark:text-neutral-100';
@@ -31,7 +51,16 @@ export default function ChatPage(): React.JSX.Element | null {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    // Belt-and-suspenders: clears the poll if the user navigates away mid-send.
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     void me()
@@ -74,17 +103,48 @@ export default function ChatPage(): React.JSX.Element | null {
     setDraft('');
     setSendError(null);
     setSending(true);
+
+    // `sendChatMessage` below doesn't resolve until the whole round is done — this
+    // poll is what makes replies appear one at a time instead of all at once at the
+    // end, and is also where `runningAttempt` (for the Stop button) comes from.
+    pollRef.current = setInterval(() => {
+      void getChat(params.id).then((latest) => {
+        if (!latest) return;
+        setChat((current) =>
+          current
+            ? { ...latest, messages: mergeMessages(current.messages, latest.messages) }
+            : current,
+        );
+      });
+    }, POLL_INTERVAL_MS);
+
     try {
       const newMessages = await sendChatMessage(chat.id, content);
       setChat((current) =>
-        current ? { ...current, messages: [...current.messages, ...newMessages] } : current,
+        current
+          ? { ...current, messages: mergeMessages(current.messages, newMessages), runningAttempt: null }
+          : current,
       );
     } catch (err) {
       setSendError(err instanceof Error ? err.message : 'Failed to send message.');
       setDraft(content);
     } finally {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
       setSending(false);
     }
+  }
+
+  async function handleCancel(): Promise<void> {
+    if (!chat?.runningAttempt) return;
+    setCancelling(true);
+    await cancelAttempt(chat.runningAttempt.id);
+    setCancelling(false);
+    // The in-flight POST /chats/:id/messages resolves on its own once chat-service.ts
+    // sees the cancellation and ends the round — no need to touch state here beyond
+    // letting the next poll tick pick up the "stopped" message it records.
   }
 
   if (authError) {
@@ -145,8 +205,20 @@ export default function ChatPage(): React.JSX.Element | null {
             ))}
           </div>
           {sending && (
-            <p className="mt-4 text-sm text-neutral-500">
-              Waiting for {chat.providers.join(', ')} to reply…
+            <p className="mt-4 flex items-center gap-2 text-sm text-neutral-500">
+              {chat.runningAttempt
+                ? `${chat.runningAttempt.provider} is replying…`
+                : `Waiting for ${chat.providers.join(', ')}…`}
+              {chat.runningAttempt && !cancelling && (
+                <button
+                  type="button"
+                  onClick={() => void handleCancel()}
+                  className="rounded border border-neutral-300 px-1.5 py-0.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                >
+                  Stop
+                </button>
+              )}
+              {cancelling && <span className="text-xs">stopping…</span>}
             </p>
           )}
           <div ref={bottomRef} />

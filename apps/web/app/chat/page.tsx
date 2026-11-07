@@ -3,11 +3,20 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Nav from '../../components/Nav';
-import { createChat, listChats, listCredentials, me, type ChatSummary } from '../../lib/api';
+import {
+  createChat,
+  deleteChat,
+  listChats,
+  listCredentials,
+  me,
+  type ChatSummary,
+} from '../../lib/api';
 
 /** Same participant list `/` offers for a bake-off run — see that page's comment on
  *  why these five and not more. */
 const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek', 'grok', 'ollama'];
+
+const PAGE_SIZE = 50;
 
 export default function ChatListPage(): React.JSX.Element | null {
   const router = useRouter();
@@ -21,6 +30,9 @@ export default function ChatListPage(): React.JSX.Element | null {
   const [providers, setProviders] = useState<string[]>(['claude']);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   useEffect(() => {
     void me()
@@ -39,7 +51,10 @@ export default function ChatListPage(): React.JSX.Element | null {
   useEffect(() => {
     if (!authChecked) return;
     listChats()
-      .then(setChatList)
+      .then((rows) => {
+        setChatList(rows);
+        setHasMore(rows.length === PAGE_SIZE);
+      })
       .catch(() => setListError('Could not load chats.'));
     listCredentials()
       .then((creds) => {
@@ -47,6 +62,28 @@ export default function ChatListPage(): React.JSX.Element | null {
       })
       .catch(() => setConfiguredProviders(new Set(['ollama'])));
   }, [authChecked]);
+
+  async function loadMore(): Promise<void> {
+    if (!chatList || chatList.length === 0) return;
+    setLoadingMore(true);
+    try {
+      const more = await listChats(chatList[chatList.length - 1]!.createdAt);
+      setChatList([...chatList, ...more]);
+      setHasMore(more.length === PAGE_SIZE);
+    } catch {
+      setListError('Could not load more chats.');
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function handleDelete(id: string): Promise<void> {
+    setConfirmingId(null);
+    const ok = await deleteChat(id);
+    if (ok) {
+      setChatList((current) => current?.filter((c) => c.id !== id) ?? current);
+    }
+  }
 
   function toggleProvider(provider: string): void {
     setProviders((current) =>
@@ -144,21 +181,60 @@ export default function ChatListPage(): React.JSX.Element | null {
             <p className="text-sm text-neutral-500">No chats yet.</p>
           )}
           {!listError && chatList !== null && chatList.length > 0 && (
-            <ul className="flex flex-col divide-y divide-neutral-200 dark:divide-neutral-800">
-              {chatList.map((chat) => (
-                <li key={chat.id}>
-                  <a
-                    href={`/chat/${chat.id}`}
-                    className="flex items-center justify-between gap-4 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-900"
-                  >
-                    <span className="text-sm">{chat.providers.join(' → ')}</span>
-                    <span className="shrink-0 text-xs text-neutral-400">
-                      {new Date(chat.createdAt).toLocaleString()}
-                    </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="flex flex-col divide-y divide-neutral-200 dark:divide-neutral-800">
+                {chatList.map((chat) => (
+                  <li key={chat.id} className="flex items-center justify-between gap-4 py-3">
+                    <a
+                      href={`/chat/${chat.id}`}
+                      className="flex min-w-0 flex-1 items-center justify-between gap-4 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                    >
+                      <span className="text-sm">{chat.providers.join(' → ')}</span>
+                      <span className="shrink-0 text-xs text-neutral-400">
+                        {new Date(chat.createdAt).toLocaleString()}
+                      </span>
+                    </a>
+                    {confirmingId === chat.id ? (
+                      <span className="flex shrink-0 items-center gap-2 text-xs">
+                        Delete?
+                        <button
+                          type="button"
+                          onClick={() => void handleDelete(chat.id)}
+                          className="text-red-600 underline dark:text-red-400"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingId(null)}
+                          className="text-neutral-500 underline"
+                        >
+                          No
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingId(chat.id)}
+                        className="shrink-0 text-xs text-neutral-400 hover:text-red-600 dark:hover:text-red-400"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {hasMore && (
+                <button
+                  type="button"
+                  disabled={loadingMore}
+                  onClick={() => void loadMore()}
+                  className="mt-4 text-sm text-neutral-500 underline disabled:opacity-50"
+                >
+                  {loadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              )}
+            </>
           )}
         </section>
       </main>
