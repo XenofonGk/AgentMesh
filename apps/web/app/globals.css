@@ -1,5 +1,36 @@
 @import 'tailwindcss';
+@plugin '@tailwindcss/typography';
 
 :root {
   color-scheme: light dark;
+}
+
+/* Browser surfaces: selection and focus should carry the same neutral system as
+   everything we draw ourselves, not whatever default the browser happens to ship. */
+::selection {
+  background-color: oklch(0.7 0.14 254 / 35%);
+}
+
+:focus-visible {
+  outline: 2px solid oklch(0.6 0.17 254);
+  outline-offset: 2px;
+}
+
+/* A thin, themeable scrollbar instead of the OS default — Firefox + WebKit. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.72 0 0 / 50%) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: oklch(0.72 0 0 / 50%);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
 }

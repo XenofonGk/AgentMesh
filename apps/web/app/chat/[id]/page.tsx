@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Nav from '../../../components/Nav';
+import Avatar from '../../../components/Avatar';
+import MessageContent from '../../../components/MessageContent';
+import { AlertIcon, SendIcon, StopIcon } from '../../../components/icons';
+import { roleColor } from '../../../lib/roleColor';
 import {
   cancelAttempt,
   getChat,
@@ -13,6 +17,7 @@ import {
 } from '../../../lib/api';
 
 const POLL_INTERVAL_MS = 2000;
+const MAX_TEXTAREA_PX = 200;
 
 /** Merges by id, keeping arrival order — what the POST response and the progress
  *  poll both need, since a message can land in either and must not show twice. */
@@ -25,20 +30,88 @@ function mergeMessages(
   return added.length > 0 ? [...current, ...added] : [...current];
 }
 
-function roleColor(role: string): string {
-  if (role === 'user') return 'text-neutral-900 dark:text-neutral-100';
-  // A handful of fixed colors cycled by provider name so each participant stays
-  // visually distinct turn to turn without needing a color picked per adapter.
-  const palette = [
-    'text-blue-700 dark:text-blue-400',
-    'text-purple-700 dark:text-purple-400',
-    'text-emerald-700 dark:text-emerald-400',
-    'text-orange-700 dark:text-orange-400',
-    'text-pink-700 dark:text-pink-400',
-  ];
-  let hash = 0;
-  for (const char of role) hash = (hash * 31 + char.charCodeAt(0)) % palette.length;
-  return palette[hash]!;
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+/** `chat-service.ts` writes a stopped/failed turn as a short status line with a
+ *  leading emoji marker — detected and re-rendered with a drawn icon instead of
+ *  the raw character, and skipping markdown rendering for what's plain status
+ *  text, not prose. */
+function statusKind(content: string): 'stopped' | 'failed' | null {
+  if (content.startsWith('⏹')) return 'stopped';
+  if (content.startsWith('⚠️')) return 'failed';
+  return null;
+}
+
+function StatusLine({ kind, text }: { kind: 'stopped' | 'failed'; text: string }) {
+  const tone =
+    kind === 'failed'
+      ? 'text-red-700 dark:text-red-400'
+      : 'text-neutral-500 dark:text-neutral-400';
+  return (
+    <p className={`flex items-center gap-1.5 text-sm ${tone}`}>
+      <AlertIcon className="size-4 shrink-0" />
+      {text}
+    </p>
+  );
+}
+
+function MessageRow({ message }: { message: ChatMessage }) {
+  const color = roleColor(message.role);
+  const kind = statusKind(message.content);
+  const text = kind ? message.content.replace(/^[⏹⚠️]+\s*/u, '') : message.content;
+
+  return (
+    <div className="flex gap-3 px-4 py-3 sm:px-6">
+      <Avatar role={message.role} />
+      <div className="min-w-0 flex-1">
+        <div className="mb-0.5 flex items-baseline gap-2">
+          <span className={`text-sm font-semibold ${color.nameText}`}>{message.role}</span>
+          <span className="text-xs text-neutral-400 dark:text-neutral-500">
+            {formatTime(message.createdAt)}
+          </span>
+        </div>
+        {kind ? (
+          <StatusLine kind={kind} text={text} />
+        ) : (
+          <MessageContent content={message.content} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TypingRow({
+  provider,
+  cancelling,
+  onCancel,
+}: {
+  provider: string;
+  cancelling: boolean;
+  onCancel: () => void;
+}) {
+  const color = roleColor(provider);
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 sm:px-6">
+      <Avatar role={provider} />
+      <span className={`text-sm font-semibold ${color.nameText}`}>{provider}</span>
+      <span className="flex items-center gap-1" aria-label={`${provider} is replying`}>
+        <span className="size-1.5 animate-pulse rounded-full bg-neutral-400 [animation-delay:-0.3s] dark:bg-neutral-500" />
+        <span className="size-1.5 animate-pulse rounded-full bg-neutral-400 [animation-delay:-0.15s] dark:bg-neutral-500" />
+        <span className="size-1.5 animate-pulse rounded-full bg-neutral-400 dark:bg-neutral-500" />
+      </span>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={cancelling}
+        className="ml-auto flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+      >
+        <StopIcon className="size-3" />
+        {cancelling ? 'Stopping…' : 'Stop'}
+      </button>
+    </div>
+  );
 }
 
 export default function ChatPage(): React.JSX.Element | null {
@@ -54,6 +127,7 @@ export default function ChatPage(): React.JSX.Element | null {
   const [cancelling, setCancelling] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     // Belt-and-suspenders: clears the poll if the user navigates away mid-send.
@@ -94,7 +168,16 @@ export default function ChatPage(): React.JSX.Element | null {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chat?.messages.length]);
+  }, [chat?.messages.length, sending]);
+
+  // Auto-grow the textarea with content, capped so a long paste doesn't push the
+  // send button off-screen — the same behavior every mainstream chat input has.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_TEXTAREA_PX).toString()}px`;
+  }, [draft]);
 
   async function handleSend(event: React.FormEvent): Promise<void> {
     event.preventDefault();
@@ -122,7 +205,11 @@ export default function ChatPage(): React.JSX.Element | null {
       const newMessages = await sendChatMessage(chat.id, content);
       setChat((current) =>
         current
-          ? { ...current, messages: mergeMessages(current.messages, newMessages), runningAttempt: null }
+          ? {
+              ...current,
+              messages: mergeMessages(current.messages, newMessages),
+              runningAttempt: null,
+            }
           : current,
       );
     } catch (err) {
@@ -145,6 +232,13 @@ export default function ChatPage(): React.JSX.Element | null {
     // The in-flight POST /chats/:id/messages resolves on its own once chat-service.ts
     // sees the cancellation and ends the round — no need to touch state here beyond
     // letting the next poll tick pick up the "stopped" message it records.
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>): void {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void handleSend(event);
+    }
   }
 
   if (authError) {
@@ -177,7 +271,7 @@ export default function ChatPage(): React.JSX.Element | null {
     return (
       <>
         <Nav current="/chat" />
-        <main className="p-6">Loading…</main>
+        <main className="p-6 text-sm text-neutral-500">Loading…</main>
       </>
     );
   }
@@ -185,69 +279,86 @@ export default function ChatPage(): React.JSX.Element | null {
   return (
     <>
       <Nav current="/chat" />
-      <main className="flex h-[calc(100vh-49px)] flex-col">
-        <header className="border-b border-neutral-200 px-6 py-3 text-sm text-neutral-500 dark:border-neutral-800">
-          {chat.providers.join(' → ')}
+      <main className="flex h-[calc(100vh-49px)] flex-col bg-white dark:bg-neutral-950">
+        <header className="border-b border-neutral-200 dark:border-neutral-800">
+          <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-3 sm:px-6">
+            {chat.providers.map((provider, index) => {
+              const color = roleColor(provider);
+              return (
+                <span key={provider} className="flex items-center gap-2">
+                  {index > 0 && (
+                    <span className="text-neutral-300 dark:text-neutral-700">→</span>
+                  )}
+                  <span className="flex items-center gap-1.5">
+                    <Avatar role={provider} size="sm" />
+                    <span className={`text-sm font-medium ${color.nameText}`}>{provider}</span>
+                  </span>
+                </span>
+              );
+            })}
+          </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {chat.messages.length === 0 && (
-            <p className="text-sm text-neutral-500">Say something to get started.</p>
-          )}
-          <div className="flex flex-col gap-4">
-            {chat.messages.map((message) => (
-              <div key={message.id}>
-                <div className={`mb-1 text-xs font-medium ${roleColor(message.role)}`}>
-                  {message.role}
-                </div>
-                <p className="whitespace-pre-wrap text-sm">{message.content}</p>
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl">
+            {chat.messages.length === 0 && !sending && (
+              <div className="flex flex-col items-center gap-1 px-6 py-16 text-center">
+                <p className="text-sm text-neutral-500">
+                  Say something to start the conversation.
+                </p>
+                <p className="text-xs text-neutral-400 dark:text-neutral-600">
+                  {chat.providers.join(' → ')} will take turns replying, in order.
+                </p>
               </div>
-            ))}
-          </div>
-          {sending && (
-            <p className="mt-4 flex items-center gap-2 text-sm text-neutral-500">
-              {chat.runningAttempt
-                ? `${chat.runningAttempt.provider} is replying…`
-                : `Waiting for ${chat.providers.join(', ')}…`}
-              {chat.runningAttempt && !cancelling && (
-                <button
-                  type="button"
-                  onClick={() => void handleCancel()}
-                  className="rounded border border-neutral-300 px-1.5 py-0.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                >
-                  Stop
-                </button>
+            )}
+            <div className="flex flex-col divide-y divide-neutral-100 py-2 dark:divide-neutral-900">
+              {chat.messages.map((message) => (
+                <MessageRow key={message.id} message={message} />
+              ))}
+              {sending && (
+                <TypingRow
+                  provider={chat.runningAttempt?.provider ?? chat.providers[0]!}
+                  cancelling={cancelling}
+                  onCancel={() => void handleCancel()}
+                />
               )}
-              {cancelling && <span className="text-xs">stopping…</span>}
-            </p>
-          )}
-          <div ref={bottomRef} />
+            </div>
+            <div ref={bottomRef} />
+          </div>
         </div>
 
-        <form
-          onSubmit={(event) => void handleSend(event)}
-          className="flex gap-2 border-t border-neutral-200 p-4 dark:border-neutral-800"
-        >
-          <input
-            className="flex-1 rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
-            }}
-            placeholder="Send a message…"
-            disabled={sending}
-          />
-          <button
-            type="submit"
-            disabled={sending || !draft.trim()}
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+        <div className="border-t border-neutral-200 dark:border-neutral-800">
+          <form
+            onSubmit={(event) => void handleSend(event)}
+            className="mx-auto flex max-w-3xl items-end gap-2 px-4 py-4 sm:px-6"
           >
-            {sending ? 'Sending…' : 'Send'}
-          </button>
-        </form>
-        {sendError && (
-          <p className="px-4 pb-3 text-sm text-red-600 dark:text-red-400">{sendError}</p>
-        )}
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              className="max-h-[200px] flex-1 resize-none rounded-2xl border border-neutral-300 bg-white px-4 py-2.5 text-sm leading-relaxed text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-600 dark:focus:border-neutral-500"
+              value={draft}
+              onChange={(event) => {
+                setDraft(event.target.value);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Send a message… (Enter to send, Shift+Enter for a new line)"
+              disabled={sending}
+            />
+            <button
+              type="submit"
+              disabled={sending || !draft.trim()}
+              aria-label="Send"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition-opacity hover:opacity-90 disabled:opacity-30 dark:bg-white dark:text-neutral-900"
+            >
+              <SendIcon className="size-4" />
+            </button>
+          </form>
+          {sendError && (
+            <p className="mx-auto max-w-3xl px-4 pb-3 text-sm text-red-600 sm:px-6 dark:text-red-400">
+              {sendError}
+            </p>
+          )}
+        </div>
       </main>
     </>
   );
