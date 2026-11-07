@@ -39,4 +39,4 @@ COPY --from=build /out /app
 # plain `docker run` of this image (e.g. local debugging) should still not default to
 # root.
 USER node
-CMD ["node", "dist/main.js"]
+ENTRYPOINT ["node", "dist/main.js"]

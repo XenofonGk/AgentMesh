@@ -7,6 +7,7 @@ networks:
   # no default egress not because of anything inside the container, but because this is
   # the only network it is ever attached to, and this network cannot reach anywhere.
   internal:
+    name: agentmesh_internal
     internal: true
 
 services:
@@ -106,7 +107,7 @@ services:
       BROKER_HOST: 0.0.0.0
       BROKER_PORT: 3003
       WORKSPACE_ROOT: /var/lib/agentmesh/workspaces
-      RUNNER_NETWORK: internal
+      RUNNER_NETWORK: agentmesh_internal
       LOG_LEVEL: ${LOG_LEVEL:-info}
     healthcheck:
       test:

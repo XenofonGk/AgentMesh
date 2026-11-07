@@ -34,7 +34,7 @@
  * There's no per-run model selection yet anywhere in the adapter layer, and threading
  * one through would be a `RunInput`/UI change out of scope here. `DEFAULT_MODEL` is the
  * one substantive Ollama-specific caveat: the operator must have pulled it (`ollama
- * pull llama3.1`) on whatever box `OLLAMA_URL` points at, or every run fails with a
+ * pull llama3.2:3b`) on whatever box `OLLAMA_URL` points at, or every run fails with a
  * `model not found` error event — that's an honest, recoverable-by-the-operator
  * failure, not a bug in this adapter.
  *
@@ -65,7 +65,7 @@ export const OLLAMA_CAPABILITIES: AdapterCapabilities = {
 };
 
 /** See the module doc's "Model is hardcoded" section. */
-const DEFAULT_MODEL = 'llama3.1';
+const DEFAULT_MODEL = 'llama3.2:3b';
 
 interface OllamaChatChunk {
   message?: { role?: string; content?: string };

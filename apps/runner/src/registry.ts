@@ -4,6 +4,7 @@ import {
   deepseekAdapter,
   geminiAdapter,
   grokAdapter,
+  ollamaAdapter,
 } from '@agentmesh/adapters';
 import type { ModelAdapter } from '@agentmesh/core';
 
@@ -12,6 +13,7 @@ const ADAPTERS: ReadonlyMap<string, ModelAdapter> = new Map([
   ['gemini', geminiAdapter],
   ['deepseek', deepseekAdapter],
   ['grok', grokAdapter],
+  ['ollama', ollamaAdapter],
 ]);
 
 export function resolveAdapter(provider: string): ModelAdapter | undefined {
