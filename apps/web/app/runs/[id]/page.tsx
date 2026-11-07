@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { AgentEvent, Usage } from '@agentmesh/core';
+import Nav from '../../../components/Nav';
 import {
   getRun,
   me,
@@ -361,6 +362,7 @@ export default function RunPage(): React.JSX.Element | null {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const [run, setRun] = useState<RunDetail | null>(null);
+  const [runLoadFailed, setRunLoadFailed] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, AttemptResult>>({});
@@ -379,10 +381,21 @@ export default function RunPage(): React.JSX.Element | null {
       });
   }, [router]);
 
+  const loadRun = useCallback((): void => {
+    setRunLoadFailed(false);
+    void getRun(params.id).then((loaded) => {
+      if (loaded) {
+        setRun(loaded);
+      } else {
+        setRunLoadFailed(true);
+      }
+    });
+  }, [params.id]);
+
   useEffect(() => {
     if (!authChecked) return;
-    void getRun(params.id).then(setRun);
-  }, [authChecked, params.id]);
+    loadRun();
+  }, [authChecked, loadRun]);
 
   const handleDone = useCallback((attemptId: string, result: AttemptResult): void => {
     setResults((current) => ({ ...current, [attemptId]: result }));
@@ -397,27 +410,57 @@ export default function RunPage(): React.JSX.Element | null {
   }
 
   if (!authChecked) return null;
-  if (!run) return <main className="p-6">Loading…</main>;
+
+  if (runLoadFailed) {
+    return (
+      <>
+        <Nav current="/runs" />
+        <main className="mx-auto flex max-w-2xl flex-col items-center gap-3 px-6 py-12 text-center">
+          <p className="text-sm text-red-600 dark:text-red-400">
+            Could not load this run — it may not exist, or belong to someone else.
+          </p>
+          <button type="button" onClick={loadRun} className="text-sm underline">
+            Retry
+          </button>
+        </main>
+      </>
+    );
+  }
+
+  if (!run) {
+    return (
+      <>
+        <Nav current="/runs" />
+        <main className="p-6">Loading…</main>
+      </>
+    );
+  }
 
   return (
-    <main className="flex h-screen flex-col gap-4 p-6">
-      <div>
-        <h1 className="text-lg font-semibold">{run.task}</h1>
-        <p className="text-xs text-neutral-500">
-          {run.status} · started {new Date(run.createdAt).toLocaleString()}
-        </p>
-      </div>
-      <ComparisonTable attempts={run.attempts} results={results} />
-      <div className="flex min-h-0 flex-1 gap-4">
-        {run.attempts.map((attempt) => (
-          <AttemptPanel
-            key={attempt.id}
-            attemptId={attempt.id}
-            provider={attempt.provider}
-            onDone={handleDone}
-          />
-        ))}
-      </div>
-    </main>
+    <>
+      <Nav current="/runs" />
+      <main className="flex h-[calc(100vh-49px)] flex-col gap-4 p-6">
+        <div>
+          <h1 className="text-lg font-semibold">{run.task}</h1>
+          <p className="text-xs text-neutral-500">
+            {run.status} · started {new Date(run.createdAt).toLocaleString()}
+          </p>
+        </div>
+        <ComparisonTable attempts={run.attempts} results={results} />
+        {/* grid, not a non-wrapping flex row: 2+ attempts used to squeeze down to
+            unusable widths on a phone. One column on narrow screens, more as width
+            allows. */}
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto md:grid-cols-2 xl:grid-cols-3">
+          {run.attempts.map((attempt) => (
+            <AttemptPanel
+              key={attempt.id}
+              attemptId={attempt.id}
+              provider={attempt.provider}
+              onDone={handleDone}
+            />
+          ))}
+        </div>
+      </main>
+    </>
   );
 }

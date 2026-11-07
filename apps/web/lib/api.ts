@@ -70,7 +70,8 @@ export async function startRun(
     body: JSON.stringify({ task, providers }),
   });
   if (!response.ok) {
-    throw new Error(`failed to start run: ${response.status.toString()}`);
+    const body = (await response.json().catch(() => ({}))) as { message?: string };
+    throw new Error(body.message ?? `failed to start run: ${response.status.toString()}`);
   }
   return (await response.json()) as { runId: string };
 }
@@ -79,6 +80,23 @@ export async function getRun(runId: string): Promise<RunDetail | null> {
   const response = await apiFetch(`/runs/${runId}`);
   if (!response.ok) return null;
   return (await response.json()) as RunDetail;
+}
+
+export interface RunSummary {
+  id: string;
+  task: string;
+  status: string;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export async function listRuns(): Promise<RunSummary[]> {
+  const response = await apiFetch('/runs');
+  if (!response.ok) {
+    throw new Error(`failed to list runs: ${response.status.toString()}`);
+  }
+  const { runs } = (await response.json()) as { runs: RunSummary[] };
+  return runs;
 }
 
 /**
@@ -265,6 +283,77 @@ export async function deleteCredential(provider: string): Promise<boolean> {
     method: 'DELETE',
   });
   return response.ok;
+}
+
+// --- Chat (round-robin relay, continuable) ---------------------------------------
+
+export interface ChatSummary {
+  id: string;
+  providers: string[];
+  createdAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  turn: number;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatDetail extends ChatSummary {
+  messages: ChatMessage[];
+}
+
+async function apiError(response: Response, fallback: string): Promise<Error> {
+  const body = (await response.json().catch(() => ({}))) as { message?: string };
+  return new Error(body.message ?? fallback);
+}
+
+export async function createChat(providers: string[]): Promise<{ chatId: string }> {
+  const response = await apiFetch('/chats', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ providers }),
+  });
+  if (!response.ok) {
+    throw await apiError(response, `failed to create chat: ${response.status.toString()}`);
+  }
+  return (await response.json()) as { chatId: string };
+}
+
+export async function listChats(): Promise<ChatSummary[]> {
+  const response = await apiFetch('/chats');
+  if (!response.ok) {
+    throw new Error(`failed to list chats: ${response.status.toString()}`);
+  }
+  const { chats } = (await response.json()) as { chats: ChatSummary[] };
+  return chats;
+}
+
+export async function getChat(chatId: string): Promise<ChatDetail | null> {
+  const response = await apiFetch(`/chats/${chatId}`);
+  if (!response.ok) return null;
+  return (await response.json()) as ChatDetail;
+}
+
+/** Sends a message and waits for every provider in the chat to reply — see
+ *  `chat-service.ts`'s module doc on the server for why this is a plain await, not
+ *  SSE. Can take a while: each provider is a real container, run in sequence. */
+export async function sendChatMessage(
+  chatId: string,
+  content: string,
+): Promise<ChatMessage[]> {
+  const response = await apiFetch(`/chats/${chatId}/messages`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  if (!response.ok) {
+    throw await apiError(response, `failed to send message: ${response.status.toString()}`);
+  }
+  const { messages } = (await response.json()) as { messages: ChatMessage[] };
+  return messages;
 }
 
 // --- Reviews --------------------------------------------------------------------

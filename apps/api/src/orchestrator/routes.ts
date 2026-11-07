@@ -9,11 +9,12 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import type { Database } from '@agentmesh/db';
 import { schema } from '@agentmesh/db';
 import { loadSkillsFromDir, SkillNameSchema, type Skill } from '@agentmesh/skills';
 import { requireSession } from '../auth/guard.js';
+import { missingCredentials } from '../credentials/check.js';
 import type { Orchestrator, AttemptImage } from './orchestrator.js';
 
 const { runs, attempts } = schema;
@@ -83,6 +84,15 @@ export async function registerOrchestratorRoutes(
       return reply.code(400).send({ error: 'invalid_skills', message: skills.error });
     }
 
+    const missing = await missingCredentials(db, request.userId!, body.data.providers);
+    if (missing.length > 0) {
+      return reply.code(400).send({
+        error: 'missing_credential',
+        message: `No stored credential for: ${missing.join(', ')}. Add one in Settings first.`,
+        providers: missing,
+      });
+    }
+
     const result = await orchestrator.startRun({
       userId: request.userId!,
       task: body.data.task,
@@ -93,6 +103,26 @@ export async function registerOrchestratorRoutes(
     });
 
     return reply.code(201).send(result);
+  });
+
+  // Newest first, scoped to the caller — the run-history list the web UI's `/runs`
+  // page needs. A summary shape only: no per-attempt detail, that's what `/runs/:id`
+  // (and its SSE events) are for.
+  server.get('/runs', guard, async (request, reply) => {
+    const rows = await db
+      .select({
+        id: runs.id,
+        task: runs.task,
+        status: runs.status,
+        createdAt: runs.createdAt,
+        completedAt: runs.completedAt,
+      })
+      .from(runs)
+      .where(eq(runs.userId, request.userId!))
+      .orderBy(desc(runs.createdAt))
+      .limit(100);
+
+    return reply.send({ runs: rows });
   });
 
   server.get('/runs/:id', guard, async (request, reply) => {

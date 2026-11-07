@@ -284,9 +284,12 @@ export const attempts = pgTable(
   'attempts',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    runId: uuid('run_id')
-      .notNull()
-      .references(() => runs.id, { onDelete: 'cascade' }),
+    /** Exactly one of `runId`/`chatId` is set, never both/neither — which kind of
+     *  attempt this is. Both nullable rather than a discriminated pair of tables: every
+     *  other column here (status, usage, timing, container lifecycle) is identical
+     *  either way, so splitting the table would mean duplicating all of it. */
+    runId: uuid('run_id').references(() => runs.id, { onDelete: 'cascade' }),
+    chatId: uuid('chat_id').references(() => chats.id, { onDelete: 'cascade' }),
     /** 'claude' | 'gemini' | … — text, matching credentials.provider; a new adapter is a row, not a migration. */
     provider: text('provider').notNull(),
     status: attemptStatus('status').notNull().default('pending'),
@@ -454,4 +457,52 @@ export const agentEvents = pgTable(
       .default(sql`now()`),
   },
   (table) => [index('agent_events_attempt_id_id_idx').on(table.attemptId, table.id)],
+);
+
+/**
+ * A persistent, continuable thread, separate from `runs`/`attempts` on purpose: a Run
+ * is one task fanned out to N independent, parallel, one-shot attempts (the bake-off —
+ * CLAUDE.md's "Topology"), and bending that shape to also mean "N providers taking
+ * turns in one growing conversation, re-invoked across many user messages" would
+ * corrupt what existing readers (the comparison table, cost/latency columns) assume a
+ * Run means. A chat still spawns one ephemeral, isolated runner container per turn via
+ * the same orchestrator primitives — it's a different *shape* of run, not a different
+ * execution model.
+ */
+export const chats = pgTable('chats', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** Ordered — this is turn order within a round, not just a set of participants. */
+  providers: jsonb('providers').notNull().$type<string[]>(),
+  createdAt: timestamptz('created_at')
+    .notNull()
+    .default(sql`now()`),
+});
+
+/**
+ * One row per message in a chat, in `turn`/`createdAt` order. `role` is `'user'` for
+ * what the person sent, or a provider name for that provider's reply — a chat message
+ * is never encrypted/secret like `credentials`, so this is a plain text column, not a
+ * ciphertext one.
+ */
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => chats.id, { onDelete: 'cascade' }),
+    /** Increments once per user message — every provider's reply within that round
+     *  shares the same `turn` as the user message that prompted it. */
+    turn: integer('turn').notNull(),
+    /** `'user'` or a provider name (`'claude'`, `'ollama'`, …). */
+    role: text('role').notNull(),
+    content: text('content').notNull(),
+    createdAt: timestamptz('created_at')
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [index('chat_messages_chat_id_turn_idx').on(table.chatId, table.turn)],
 );

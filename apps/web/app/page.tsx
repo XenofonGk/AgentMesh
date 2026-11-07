@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { me, startRun } from '../lib/api';
+import Nav from '../components/Nav';
+import { listCredentials, me, startRun } from '../lib/api';
 
 /**
  * Only providers with a real adapter (`packages/adapters/src`) are selectable — see
@@ -22,6 +23,11 @@ export default function HomePage(): React.JSX.Element | null {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  /** `null` while loading — providers render enabled-but-unbadged until this resolves,
+   *  rather than flash a "not configured" badge on every provider for a moment. */
+  const [configuredProviders, setConfiguredProviders] = useState<Set<string> | null>(
+    null,
+  );
 
   useEffect(() => {
     void me()
@@ -36,6 +42,18 @@ export default function HomePage(): React.JSX.Element | null {
         setAuthError('Could not reach the API. Is it running?');
       });
   }, [router]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    listCredentials()
+      .then((creds) => {
+        // ollama needs no stored credential at all (see AVAILABLE_PROVIDERS' comment).
+        setConfiguredProviders(new Set(['ollama', ...creds.map((c) => c.provider)]));
+      })
+      .catch(() => {
+        setConfiguredProviders(new Set(['ollama']));
+      });
+  }, [authChecked]);
 
   function toggleProvider(provider: string): void {
     setProviders((current) =>
@@ -56,8 +74,8 @@ export default function HomePage(): React.JSX.Element | null {
     try {
       const { runId } = await startRun(task, providers);
       router.push(`/runs/${runId}`);
-    } catch {
-      setError('Failed to start the run.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start the run.');
       setSubmitting(false);
     }
   }
@@ -73,22 +91,14 @@ export default function HomePage(): React.JSX.Element | null {
   if (!authChecked) return null;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-6 px-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">AgentMesh</h1>
-          <p className="mt-2 text-neutral-600 dark:text-neutral-400">
-            Describe a task and watch an agent work on it, live.
-          </p>
-        </div>
-        <div className="flex gap-4">
-          <a href="/settings" className="text-sm text-neutral-500 hover:underline">
-            Settings
-          </a>
-          <a href="/skills" className="text-sm text-neutral-500 hover:underline">
-            Skills
-          </a>
-        </div>
+    <>
+      <Nav current="/" />
+      <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-12">
+      <div>
+        <h1 className="text-3xl font-semibold tracking-tight">AgentMesh</h1>
+        <p className="mt-2 text-neutral-600 dark:text-neutral-400">
+          Describe a task and watch an agent work on it, live.
+        </p>
       </div>
 
       <form
@@ -110,18 +120,29 @@ export default function HomePage(): React.JSX.Element | null {
 
         <fieldset className="flex flex-col gap-2 text-sm">
           <legend className="mb-1">Providers</legend>
-          {AVAILABLE_PROVIDERS.map((provider) => (
-            <label key={provider} className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={providers.includes(provider)}
-                onChange={() => {
-                  toggleProvider(provider);
-                }}
-              />
-              {provider}
-            </label>
-          ))}
+          {AVAILABLE_PROVIDERS.map((provider) => {
+            const configured = configuredProviders?.has(provider) ?? true;
+            return (
+              <label key={provider} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={providers.includes(provider)}
+                  onChange={() => {
+                    toggleProvider(provider);
+                  }}
+                />
+                {provider}
+                {configuredProviders !== null && !configured && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-300">
+                    No API key —{' '}
+                    <a href="/settings" className="underline">
+                      add one
+                    </a>
+                  </span>
+                )}
+              </label>
+            );
+          })}
         </fieldset>
 
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -134,6 +155,7 @@ export default function HomePage(): React.JSX.Element | null {
           {submitting ? 'Starting…' : 'Start run'}
         </button>
       </form>
-    </main>
+      </main>
+    </>
   );
 }

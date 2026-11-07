@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { parseSkillMarkdown } from '@agentmesh/skills/parser';
+import Nav from '../../components/Nav';
 import { listSkills, me, saveSkill, type SkillSummary } from '../../lib/api';
 
 const DEFAULT_CONTENT = `---
@@ -110,18 +111,15 @@ export default function SkillsPage(): React.JSX.Element | null {
   if (!authChecked) return null;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-6 py-10">
-      <div className="flex items-center justify-between">
+    <>
+      <Nav current="/skills" />
+      <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Skills</h1>
           <p className="mt-2 text-neutral-600 dark:text-neutral-400">
             Agent Skills authored for this instance, from `AGENTMESH_SKILLS_DIR`.
           </p>
         </div>
-        <a href="/" className="text-sm text-neutral-500 hover:underline">
-          ← back
-        </a>
-      </div>
 
       {listError && <p className="text-sm text-red-600 dark:text-red-400">{listError}</p>}
 
@@ -223,6 +221,7 @@ export default function SkillsPage(): React.JSX.Element | null {
           </div>
         </form>
       )}
-    </main>
+      </main>
+    </>
   );
 }

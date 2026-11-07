@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Nav from '../../components/Nav';
 import {
   deleteCredential,
   listCredentials,
@@ -220,18 +221,15 @@ export default function SettingsPage(): React.JSX.Element | null {
   const credentialMap = new Map(credentials.map((c) => [c.provider, c]));
 
   return (
-    <main className="mx-auto min-h-screen max-w-2xl px-6 py-12">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Manage your provider API keys. Keys are encrypted at rest and never leave
-            this instance.
-          </p>
-        </div>
-        <a href="/" className="text-sm text-neutral-500 hover:underline">
-          ← Back
-        </a>
+    <>
+      <Nav current="/settings" />
+      <main className="mx-auto max-w-2xl px-6 py-12">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <p className="mt-1 text-sm text-neutral-500">
+          Manage your provider API keys. Keys are encrypted at rest and never leave
+          this instance.
+        </p>
       </div>
 
       <section className="mt-8">
@@ -247,6 +245,7 @@ export default function SettingsPage(): React.JSX.Element | null {
           ))}
         </div>
       </section>
-    </main>
+      </main>
+    </>
   );
 }

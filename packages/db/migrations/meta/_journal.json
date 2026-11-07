@@ -43,6 +43,20 @@
       "when": 1785936475284,
       "tag": "0005_skill_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794082196277,
+      "tag": "0006_workable_skreet",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794082235875,
+      "tag": "0007_dashing_swarm",
+      "breakpoints": true
     }
   ]
 }

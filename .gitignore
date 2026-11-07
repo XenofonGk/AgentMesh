@@ -38,3 +38,6 @@ pnpm-debug.log*
 
 # Local agent scratch
 .claude/settings.local.json
+
+# Host-local compose overrides — never the same across deployments
+compose.override.yaml

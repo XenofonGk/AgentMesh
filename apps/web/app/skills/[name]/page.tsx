@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { parseSkillMarkdown } from '@agentmesh/skills/parser';
+import Nav from '../../../components/Nav';
 import {
   activateSkillVersion,
   deleteSkill,
@@ -255,10 +256,19 @@ export default function EditSkillPage(): React.JSX.Element | null {
     );
   }
 
-  if (content === null) return <main className="p-6">Loading…</main>;
+  if (content === null) {
+    return (
+      <>
+        <Nav current="/skills" />
+        <main className="p-6">Loading…</main>
+      </>
+    );
+  }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-6 py-10">
+    <>
+      <Nav current="/skills" />
+      <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-semibold tracking-tight">{params.name}</h1>
         <a href="/skills" className="text-sm text-neutral-500 hover:underline">
@@ -309,6 +319,7 @@ export default function EditSkillPage(): React.JSX.Element | null {
       </form>
 
       <VersionHistory name={params.name} />
-    </main>
+      </main>
+    </>
   );
 }

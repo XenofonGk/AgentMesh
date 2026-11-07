@@ -108,7 +108,7 @@ export class Orchestrator {
     const attemptIds: string[] = [];
     for (const attemptImage of options.attempts) {
       const attemptId = await this.startAttempt(
-        run.id,
+        { runId: run.id },
         options.userId,
         options.task,
         options.proxyUrl,
@@ -122,8 +122,34 @@ export class Orchestrator {
     return { runId: run.id, attemptIds };
   }
 
+  /**
+   * The chat half of attempt-spawning — same sandbox/token/timeout machinery as a
+   * bake-off attempt (`startAttempt`), just keyed to a chat instead of a run. Public
+   * because `chat/chat-service.ts` drives these one at a time, waiting for each to
+   * finish before spawning the next (a relay, not a fan-out) — that sequencing isn't
+   * this class's concern, only spawning and lifecycle are.
+   */
+  async startChatAttempt(
+    chatId: string,
+    userId: string,
+    prompt: string,
+    proxyUrl: string,
+    apiUrl: string,
+    attemptImage: AttemptImage,
+  ): Promise<string> {
+    return this.startAttempt(
+      { chatId },
+      userId,
+      prompt,
+      proxyUrl,
+      apiUrl,
+      attemptImage,
+      undefined,
+    );
+  }
+
   private async startAttempt(
-    runId: string,
+    target: { runId: string } | { chatId: string },
     userId: string,
     task: string,
     proxyUrl: string,
@@ -133,7 +159,7 @@ export class Orchestrator {
   ): Promise<string> {
     const [attempt] = await this.db
       .insert(attempts)
-      .values({ runId, provider: attemptImage.provider, status: 'pending' })
+      .values({ ...target, provider: attemptImage.provider, status: 'pending' })
       .returning({ id: attempts.id });
     if (!attempt) {
       throw new Error('failed to create attempt');
