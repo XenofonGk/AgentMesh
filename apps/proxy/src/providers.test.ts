@@ -45,7 +45,7 @@ describe('resolveProviderRoute', () => {
   it('resolves gemini on its own fixed model path', () => {
     const route = resolveProviderRoute(
       'gemini',
-      '/v1beta/models/gemini-2.0-flash:generateContent',
+      '/v1beta/models/gemini-3.8-flash:generateContent',
     );
     expect(route?.origin).toBe('https://generativelanguage.googleapis.com');
     expect(route?.authHeader).toBe('x-goog-api-key');
@@ -65,6 +65,13 @@ describe('resolveProviderRoute', () => {
     expect(route?.authValuePrefix).toBe('Bearer ');
   });
 
+  it('resolves chatgpt with a Bearer auth value prefix', () => {
+    const route = resolveProviderRoute('chatgpt', '/v1/chat/completions');
+    expect(route?.origin).toBe('https://api.openai.com');
+    expect(route?.authHeader).toBe('authorization');
+    expect(route?.authValuePrefix).toBe('Bearer ');
+  });
+
   it('resolves ollama with secretRequired false and the configured default origin', () => {
     const route = resolveProviderRoute('ollama', '/api/chat');
     expect(route?.origin).toBe('http://host.docker.internal:11434');
@@ -72,11 +79,12 @@ describe('resolveProviderRoute', () => {
   });
 
   it('ships with exactly the routes documented, so an addition here is deliberate', () => {
-    expect(DEFAULT_PROVIDER_ROUTES).toHaveLength(5);
+    expect(DEFAULT_PROVIDER_ROUTES).toHaveLength(6);
     expect(DEFAULT_PROVIDER_ROUTES.map((route) => route.provider)).toEqual([
       'claude',
       'gemini',
       'deepseek',
+      'chatgpt',
       'grok',
       'ollama',
     ]);

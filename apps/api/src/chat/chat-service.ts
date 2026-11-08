@@ -17,7 +17,7 @@ import type { Database } from '@agentmesh/db';
 import { schema } from '@agentmesh/db';
 import type { Orchestrator } from '../orchestrator/orchestrator.js';
 
-const { chats, chatMessages, attempts, agentEvents } = schema;
+const { chats, chatMessages, attempts, agentEvents, runs } = schema;
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'timed_out', 'cancelled']);
 const POLL_INTERVAL_MS = 750;
@@ -90,8 +90,10 @@ async function waitForAttempt(db: Database, attemptId: string): Promise<AttemptO
 
 /** Concatenates every `message_delta`'s text, in event order — the same reduction
  *  `apps/web`'s `reduceEvents` does client-side, done here server-side because the
- *  transcript the *next* provider's turn needs is plain text, not `AgentEvent`s. */
-async function reconstructReplyText(db: Database, attemptId: string): Promise<string> {
+ *  transcript the *next* provider's turn needs is plain text, not `AgentEvent`s.
+ *  Exported for `continueAttemptAsChat`, below — forking a Run attempt into a Chat
+ *  needs the exact same reconstruction a chat's own relay turn does. */
+export async function reconstructReplyText(db: Database, attemptId: string): Promise<string> {
   const rows = await db
     .select({ payload: agentEvents.payload })
     .from(agentEvents)
@@ -174,4 +176,58 @@ export async function sendChatMessage(
   }
 
   return newRows;
+}
+
+export type ContinueAttemptResult =
+  | { ok: true; chatId: string }
+  | { ok: false; reason: 'not_found' | 'not_continuable' };
+
+/**
+ * Turns a single Run attempt into the start of a continuable, single-provider Chat —
+ * the "Continue" action on a bake-off's comparison view. A Run is deliberately
+ * one-shot and parallel (CLAUDE.md's Topology: "Runs are independent... no shared
+ * state"), and that stays true; this doesn't make a Run continuable, it forks the one
+ * attempt the user picked into the *existing*, already-continuable Chat feature,
+ * pre-seeded with the original task and that attempt's reply as turn 0. Each attempt
+ * continued this way becomes its own independent chat — continuing two different
+ * providers from the same run produces two unrelated chats, never a shared one, which
+ * is what keeps this "independent per-provider," not a second relay mode.
+ */
+export async function continueAttemptAsChat(
+  db: Database,
+  options: { attemptId: string; userId: string },
+): Promise<ContinueAttemptResult> {
+  const [row] = await db
+    .select({
+      attemptStatus: attempts.status,
+      provider: attempts.provider,
+      runId: attempts.runId,
+      runUserId: runs.userId,
+      task: runs.task,
+    })
+    .from(attempts)
+    .innerJoin(runs, eq(attempts.runId, runs.id))
+    .where(eq(attempts.id, options.attemptId));
+
+  if (!row || row.runId === null || row.runUserId !== options.userId) {
+    return { ok: false, reason: 'not_found' };
+  }
+  if (row.attemptStatus !== 'succeeded') {
+    return { ok: false, reason: 'not_continuable' };
+  }
+
+  const replyText = (await reconstructReplyText(db, options.attemptId)) || '(empty reply)';
+
+  const [chat] = await db
+    .insert(chats)
+    .values({ userId: options.userId, providers: [row.provider] })
+    .returning({ id: chats.id });
+  if (!chat) throw new Error('failed to create chat');
+
+  await db.insert(chatMessages).values([
+    { chatId: chat.id, turn: 0, role: 'user', content: row.task },
+    { chatId: chat.id, turn: 0, role: row.provider, content: replyText },
+  ]);
+
+  return { ok: true, chatId: chat.id };
 }

@@ -111,15 +111,23 @@ export const grokAdapter: ModelAdapter = {
     }
 
     if (!response.ok || response.body === null) {
-      const errorBody = (await response
-        .json()
-        .catch(() => null)) as ChatCompletionChunk | null;
+      // x.ai doesn't always use the `{error:{message}}` shape this type expects (seen
+      // in practice: a 400 with a differently-shaped body) — read the raw text once and
+      // fall back to a truncated snippet of it rather than a bare status code, so a
+      // failure is still diagnosable from the chat/run UI without digging into logs.
+      const rawText = await response.text().catch(() => '');
+      let errorBody: ChatCompletionChunk | null = null;
+      try {
+        errorBody = JSON.parse(rawText) as ChatCompletionChunk;
+      } catch {
+        errorBody = null;
+      }
       yield {
         ...base,
         type: 'error',
         message:
           errorBody?.error?.message ??
-          `grok request failed: ${response.status.toString()}`,
+          `grok request failed: ${response.status.toString()}${rawText ? ` — ${rawText.slice(0, 300)}` : ''}`,
         recoverable: false,
       };
       yield { ...base, type: 'done', outcome: 'failed', usage: null };

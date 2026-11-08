@@ -48,7 +48,7 @@ export const GEMINI_CAPABILITIES: AdapterCapabilities = {
   agentic: false,
   streaming: false,
   toolUse: false,
-  // Gemini 2.0 Flash's context window.
+  // Gemini 3.8 Flash's context window.
   maxContextTokens: 1_048_576,
 };
 
@@ -83,7 +83,7 @@ export const geminiAdapter: ModelAdapter = {
     let response: Response;
     try {
       response = await fetch(
-        `${ctx.proxyUrl}/providers/gemini/v1beta/models/gemini-2.0-flash:generateContent`,
+        `${ctx.proxyUrl}/providers/gemini/v1beta/models/gemini-3.8-flash:generateContent`,
         {
           method: 'POST',
           headers: {
@@ -110,16 +110,25 @@ export const geminiAdapter: ModelAdapter = {
       return;
     }
 
-    const body = (await response
-      .json()
-      .catch(() => null)) as GenerateContentResponse | null;
+    const rawText = await response.text().catch(() => '');
+    let body: GenerateContentResponse | null = null;
+    try {
+      body = JSON.parse(rawText) as GenerateContentResponse;
+    } catch {
+      body = null;
+    }
 
     if (!response.ok || body === null) {
+      // Same reasoning as the grok/deepseek adapters' twin of this block: fall back to
+      // a truncated raw-body snippet, not a bare status code, when the response doesn't
+      // carry `error.message` — a failure should be diagnosable from the chat/run UI
+      // without digging into logs.
       yield {
         ...base,
         type: 'error',
         message:
-          body?.error?.message ?? `gemini request failed: ${response.status.toString()}`,
+          body?.error?.message ??
+          `gemini request failed: ${response.status.toString()}${rawText ? ` — ${rawText.slice(0, 300)}` : ''}`,
         recoverable: false,
       };
       yield { ...base, type: 'done', outcome: 'failed', usage: null };

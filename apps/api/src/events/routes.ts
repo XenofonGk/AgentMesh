@@ -20,7 +20,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { Database } from '@agentmesh/db';
 import {
   appendEvent,
@@ -34,8 +34,9 @@ import type { AgentEvent } from '@agentmesh/core';
 import { requireSession } from '../auth/guard.js';
 import { publish, subscribe } from './event-bus.js';
 import type { Orchestrator } from '../orchestrator/orchestrator.js';
+import { continueAttemptAsChat } from '../chat/chat-service.js';
 
-const { attempts, runs } = schema;
+const { attempts, runs, agentEvents } = schema;
 
 const AGENT_EVENT_TYPES = [
   'message_delta',
@@ -104,9 +105,30 @@ export async function registerEventRoutes(
     publish(event);
 
     if (event.type === 'done' && orchestrator) {
+      // `done` carries no message field by design (packages/core's AgentEvent — never
+      // widened locally per CLAUDE.md): the adapter reports *why* a failed attempt
+      // failed as a separate preceding `error` event, so that's where the message has
+      // to be pulled back from here. Without this, every provider-reported failure
+      // (an API returning 400/402/etc, not just orchestrator timeouts/cancels) left
+      // `attempts.errorMessage` null and surfaced as "unknown error" everywhere that
+      // reads it (chat-service.ts, the runs UI) — even though the real reason was
+      // already captured correctly and sitting in `agent_events`.
+      let errorMessage: string | undefined;
+      if (event.outcome === 'failed') {
+        const [lastError] = await db
+          .select({ payload: agentEvents.payload })
+          .from(agentEvents)
+          .where(and(eq(agentEvents.attemptId, event.attemptId), eq(agentEvents.type, 'error')))
+          .orderBy(desc(agentEvents.id))
+          .limit(1);
+        const payload = lastError?.payload as { message?: string } | undefined;
+        errorMessage = payload?.message;
+      }
+
       await orchestrator.finishAttempt(event.attemptId, {
         status: event.outcome,
         usage: event.usage,
+        ...(errorMessage !== undefined && { errorMessage }),
       });
     }
 
@@ -171,6 +193,33 @@ export async function registerEventRoutes(
         write(null, event, 'pending'),
       );
       request.raw.on('close', unsubscribe);
+    },
+  );
+
+  // Forks a finished Run attempt into a new single-provider Chat, pre-seeded with the
+  // original task + that attempt's reply as turn 0 — see `continueAttemptAsChat`'s own
+  // doc comment for why this is a fork into the existing Chat feature, not a second
+  // continuation mechanism. Doesn't touch `orchestrator`, so it's registered
+  // unconditionally rather than nested under the `if (orchestrator)` guard below.
+  server.post(
+    '/attempts/:id/continue',
+    { preHandler: requireSession(db) },
+    async (request, reply) => {
+      const params = z.object({ id: z.string().uuid() }).safeParse(request.params);
+      if (!params.success) {
+        return reply.code(400).send({ error: 'invalid_id' });
+      }
+
+      const result = await continueAttemptAsChat(db, {
+        attemptId: params.data.id,
+        userId: request.userId!,
+      });
+      if (!result.ok) {
+        const code = result.reason === 'not_found' ? 404 : 409;
+        return reply.code(code).send({ error: result.reason });
+      }
+
+      return reply.code(201).send({ chatId: result.chatId });
     },
   );
 

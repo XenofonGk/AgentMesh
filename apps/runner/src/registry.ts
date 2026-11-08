@@ -1,5 +1,6 @@
 /** Maps `AGENTMESH_PROVIDER` to the adapter that runs it. */
 import {
+  chatgptAdapter,
   claudeAdapter,
   deepseekAdapter,
   geminiAdapter,
@@ -13,6 +14,7 @@ const ADAPTERS: ReadonlyMap<string, ModelAdapter> = new Map([
   ['gemini', geminiAdapter],
   ['deepseek', deepseekAdapter],
   ['grok', grokAdapter],
+  ['chatgpt', chatgptAdapter],
   ['ollama', ollamaAdapter],
 ]);
 

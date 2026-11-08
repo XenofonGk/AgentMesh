@@ -126,7 +126,7 @@ describe('grokAdapter', () => {
       ok: false,
       status: 401,
       body: null,
-      json: () => Promise.resolve({ error: { message: 'Invalid API key' } }),
+      text: () => Promise.resolve(JSON.stringify({ error: { message: 'Invalid API key' } })),
     });
     vi.stubGlobal('fetch', fetchMock);
 

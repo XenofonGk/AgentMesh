@@ -5,9 +5,13 @@
  * contract for an arbitrary image, a command, `Privileged`, or a bind mount outside the
  * workspace — see `server.ts`'s request schema.
  *
- * Placeholder images/commands only: there's no adapter registry yet (CLAUDE.md's
- * "Adding a provider adapter" hasn't happened), so this is a naming convention meant to
- * be replaced wholesale once adapters exist, not extended in place.
+ * One shared runner image, multi-tagged per provider name — `infra/runner.Dockerfile`
+ * builds one image and the deploy step tags it under every name below;
+ * `apps/runner/src/registry.ts` picks the actual adapter at runtime from
+ * `AGENTMESH_PROVIDER`. `codex` is reserved for OpenAI's agentic Codex CLI adapter (like
+ * `claudeAdapter` wraps the Claude Agent SDK subprocess) — not built yet, name held so
+ * the broker-side allowlist doesn't need touching again when it lands. `chatgpt` is
+ * OpenAI's plain, non-agentic Chat Completions adapter, which does exist already.
  */
 export interface AllowedImage {
   image: string;
@@ -15,7 +19,7 @@ export interface AllowedImage {
 }
 
 const ALLOWED_IMAGES: ReadonlyMap<string, AllowedImage> = new Map(
-  ['claude', 'codex', 'gemini', 'deepseek', 'grok', 'ollama'].map((provider) => [
+  ['claude', 'codex', 'gemini', 'deepseek', 'grok', 'chatgpt', 'ollama'].map((provider) => [
     `agentmesh/${provider}:latest`,
     { image: `agentmesh/${provider}:latest`, command: ['run'] },
   ]),

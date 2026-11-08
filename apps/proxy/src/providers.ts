@@ -42,17 +42,20 @@ export interface ProviderRoute {
 }
 
 /**
- * Anthropic, Gemini, DeepSeek, and Grok — deliberately not generalized further than
+ * Anthropic, Gemini, DeepSeek, Grok, and OpenAI (plain Chat Completions) — deliberately
+ * not generalized further than
  * these data points prove necessary. `/v1/messages` is the one endpoint the Claude
  * Agent SDK's Messages API calls. Gemini's path bakes in one fixed model
- * (`gemini-2.0-flash:generateContent`, not the streaming variant — see the adapter's
+ * (`gemini-3.8-flash:generateContent`, not the streaming variant — see the adapter's
  * own doc comment for why) rather than a family of model paths — same reasoning as
  * Claude's single path: widen this when a second model or endpoint actually needs it,
  * not before. `x-goog-api-key` is Google's own documented header for the Generative
  * Language API, so the run token travels there the same way it travels in `x-api-key`
  * for Claude — see `packages/adapters/src/claude/adapter.ts`'s module doc for why the
  * run token has to occupy the real auth header at all. DeepSeek and Grok are both
- * OpenAI-compatible: `Authorization: Bearer <key>`, hence `authValuePrefix` on both.
+ * OpenAI-compatible: `Authorization: Bearer <key>`, hence `authValuePrefix` on both —
+ * OpenAI's own Chat Completions API naturally uses the same header and gets the same
+ * prefix.
  */
 /** Default origin for the `ollama` route — a Docker Desktop / Linux host-gateway alias
  * (see compose.yaml's `extra_hosts` on the proxy service), not the public internet.
@@ -96,13 +99,20 @@ const BASE_PROVIDER_ROUTES: readonly ProviderRoute[] = [
   {
     provider: 'gemini',
     origin: 'https://generativelanguage.googleapis.com',
-    paths: new Set(['/v1beta/models/gemini-2.0-flash:generateContent']),
+    paths: new Set(['/v1beta/models/gemini-3.8-flash:generateContent']),
     authHeader: 'x-goog-api-key',
   },
   {
     provider: 'deepseek',
     origin: 'https://api.deepseek.com',
     paths: new Set(['/chat/completions']),
+    authHeader: 'authorization',
+    authValuePrefix: 'Bearer ',
+  },
+  {
+    provider: 'chatgpt',
+    origin: 'https://api.openai.com',
+    paths: new Set(['/v1/chat/completions']),
     authHeader: 'authorization',
     authValuePrefix: 'Bearer ',
   },

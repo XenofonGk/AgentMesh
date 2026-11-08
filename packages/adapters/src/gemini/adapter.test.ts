@@ -27,8 +27,10 @@ describe('geminiAdapter', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: () =>
-        Promise.resolve({ candidates: [{ content: { parts: [{ text: 'hi' }] } }] }),
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({ candidates: [{ content: { parts: [{ text: 'hi' }] } }] }),
+        ),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -40,7 +42,7 @@ describe('geminiAdapter', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(
-      'http://proxy:3002/providers/gemini/v1beta/models/gemini-2.0-flash:generateContent',
+      'http://proxy:3002/providers/gemini/v1beta/models/gemini-3.8-flash:generateContent',
     );
     expect((init.headers as Record<string, string>)['x-goog-api-key']).toBe(
       'run-token-abc',
@@ -54,13 +56,15 @@ describe('geminiAdapter', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: () =>
-        Promise.resolve({
-          candidates: [
-            { content: { parts: [{ text: 'Hello there' }] }, finishReason: 'STOP' },
-          ],
-          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
-        }),
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            candidates: [
+              { content: { parts: [{ text: 'Hello there' }] }, finishReason: 'STOP' },
+            ],
+            usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
+          }),
+        ),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -88,10 +92,12 @@ describe('geminiAdapter', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: () =>
-        Promise.resolve({
-          candidates: [{ content: { parts: [{ text: 'Hello ' }, { text: 'world' }] } }],
-        }),
+      text: () =>
+        Promise.resolve(
+          JSON.stringify({
+            candidates: [{ content: { parts: [{ text: 'Hello ' }, { text: 'world' }] } }],
+          }),
+        ),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -109,7 +115,7 @@ describe('geminiAdapter', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
       status: 400,
-      json: () => Promise.resolve({ error: { message: 'API key not valid' } }),
+      text: () => Promise.resolve(JSON.stringify({ error: { message: 'API key not valid' } })),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -132,7 +138,7 @@ describe('geminiAdapter', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
-      json: () => Promise.reject(new Error('unexpected token')),
+      text: () => Promise.resolve('not valid json'),
     });
     vi.stubGlobal('fetch', fetchMock);
 

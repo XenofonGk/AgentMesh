@@ -115,15 +115,23 @@ export const deepseekAdapter: ModelAdapter = {
     }
 
     if (!response.ok || response.body === null) {
-      const errorBody = (await response
-        .json()
-        .catch(() => null)) as ChatCompletionChunk | null;
+      // Same reasoning as the grok adapter's twin of this block: fall back to a
+      // truncated raw-body snippet, not a bare status code, when the response doesn't
+      // match the expected `{error:{message}}` shape — a failure should be diagnosable
+      // from the chat/run UI without digging into logs.
+      const rawText = await response.text().catch(() => '');
+      let errorBody: ChatCompletionChunk | null = null;
+      try {
+        errorBody = JSON.parse(rawText) as ChatCompletionChunk;
+      } catch {
+        errorBody = null;
+      }
       yield {
         ...base,
         type: 'error',
         message:
           errorBody?.error?.message ??
-          `deepseek request failed: ${response.status.toString()}`,
+          `deepseek request failed: ${response.status.toString()}${rawText ? ` — ${rawText.slice(0, 300)}` : ''}`,
         recoverable: false,
       };
       yield { ...base, type: 'done', outcome: 'failed', usage: null };

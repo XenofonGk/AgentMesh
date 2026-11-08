@@ -61,7 +61,14 @@ export async function buildServer({
     },
   });
 
-  await server.register(cors, { origin: config.WEB_ORIGIN, credentials: true });
+  // @fastify/cors defaults `methods` to `GET,HEAD,POST` only — every DELETE/PUT/PATCH
+  // route (run/chat delete, credential/skill PUT, diff-review PATCH) needs an explicit
+  // allowlist or the browser's preflight rejects them before the request is ever sent.
+  await server.register(cors, {
+    origin: config.WEB_ORIGIN,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  });
   // No `secret` option: this project signs nothing into the cookie value. The cookie
   // carries an opaque session token; the token is what's validated against the
   // `sessions` table, so a forged-but-unsigned cookie fails at that lookup regardless.

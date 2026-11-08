@@ -202,6 +202,76 @@ describeDb('event routes', () => {
         .where(eq(schema.attempts.id, attemptId));
       expect(row?.status).toBe('succeeded');
     });
+
+    it("a failed done event's attempt row carries the preceding error event's message", async () => {
+      // Regression test: `done` carries no message field by design (packages/core's
+      // AgentEvent) — the real reason a provider failed lives in a separate `error`
+      // event the adapter emits first. The ingest route used to drop that message on
+      // the floor entirely, leaving `attempts.errorMessage` null for every real
+      // provider failure (wrong model, bad key, no balance) and surfacing as a bare
+      // "unknown error" everywhere that reads it.
+      const sandbox = new FakeSandboxProvider();
+      app = await buildServer({ config, database: handle, sandbox });
+
+      const email = `${randomUUID()}@example.test`;
+      const { userId } = await createUserWithPassword(
+        handle.db,
+        email,
+        'a genuinely long passphrase',
+      );
+      const sessionToken = await createSession(handle.db, userId);
+      const cookie = `${SESSION_COOKIE_NAME}=${sessionToken}`;
+
+      const startRun = await app.server.inject({
+        method: 'POST',
+        url: '/runs',
+        headers: { cookie },
+        payload: { task: 'do the thing', providers: ['ollama'] },
+      });
+      expect(startRun.statusCode).toBe(201);
+      const { attemptIds } = startRun.json<{ attemptIds: string[] }>();
+      const attemptId = attemptIds[0]!;
+      const runToken = [...sandbox.sandboxes.values()][0]!.spec.env[
+        'AGENTMESH_RUN_TOKEN'
+      ]!;
+
+      const errorEvent = await app.server.inject({
+        method: 'POST',
+        url: `/internal/attempts/${attemptId}/events`,
+        headers: { 'x-agentmesh-run-token': runToken },
+        payload: {
+          attemptId,
+          provider: 'ollama',
+          timestamp: new Date().toISOString(),
+          type: 'error',
+          message: 'ollama request failed: 500 — model not found',
+          recoverable: false,
+        },
+      });
+      expect(errorEvent.statusCode).toBe(202);
+
+      const doneEvent = await app.server.inject({
+        method: 'POST',
+        url: `/internal/attempts/${attemptId}/events`,
+        headers: { 'x-agentmesh-run-token': runToken },
+        payload: {
+          attemptId,
+          provider: 'ollama',
+          timestamp: new Date().toISOString(),
+          type: 'done',
+          outcome: 'failed',
+          usage: null,
+        },
+      });
+      expect(doneEvent.statusCode).toBe(202);
+
+      const [row] = await handle.db
+        .select({ status: schema.attempts.status, errorMessage: schema.attempts.errorMessage })
+        .from(schema.attempts)
+        .where(eq(schema.attempts.id, attemptId));
+      expect(row?.status).toBe('failed');
+      expect(row?.errorMessage).toBe('ollama request failed: 500 — model not found');
+    });
   });
 
   describe('SSE (browser)', () => {
@@ -556,6 +626,82 @@ describeDb('event routes', () => {
         headers: { cookie },
       });
       expect(response.statusCode).toBe(409);
+    });
+  });
+
+  describe('continue (POST /attempts/:id/continue)', () => {
+    it('404s for an attempt belonging to another user', async () => {
+      app = await buildServer({ config, database: handle });
+      const { attemptId } = await freshAttempt();
+      const token = await createSession(handle.db, (await freshAttempt()).userId);
+      const cookie = `${SESSION_COOKIE_NAME}=${token}`;
+
+      const response = await app.server.inject({
+        method: 'POST',
+        url: `/attempts/${attemptId}/continue`,
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(404);
+    });
+
+    it("409s an attempt that hasn't succeeded yet", async () => {
+      app = await buildServer({ config, database: handle });
+      const { userId, attemptId } = await freshAttempt();
+      const token = await createSession(handle.db, userId);
+      const cookie = `${SESSION_COOKIE_NAME}=${token}`;
+
+      const response = await app.server.inject({
+        method: 'POST',
+        url: `/attempts/${attemptId}/continue`,
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({ error: 'not_continuable' });
+    });
+
+    it('forks a succeeded attempt into a new chat seeded with the task and the reply', async () => {
+      app = await buildServer({ config, database: handle });
+      const { userId, attemptId } = await freshAttempt();
+      const { token } = await issueRunToken(
+        handle.db,
+        { attemptId, userId, provider: 'claude' },
+        60_000,
+      );
+      await app.server.inject({
+        method: 'POST',
+        url: `/internal/attempts/${attemptId}/events`,
+        headers: { 'x-agentmesh-run-token': token },
+        payload: messageDelta(attemptId, 'Hello there'),
+      });
+      await handle.db
+        .update(schema.attempts)
+        .set({ status: 'succeeded', completedAt: new Date() })
+        .where(eq(schema.attempts.id, attemptId));
+      const sessionToken = await createSession(handle.db, userId);
+      const cookie = `${SESSION_COOKIE_NAME}=${sessionToken}`;
+
+      const response = await app.server.inject({
+        method: 'POST',
+        url: `/attempts/${attemptId}/continue`,
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(201);
+      const { chatId } = response.json<{ chatId: string }>();
+
+      const [chat] = await handle.db
+        .select()
+        .from(schema.chats)
+        .where(eq(schema.chats.id, chatId));
+      expect(chat?.userId).toBe(userId);
+      expect(chat?.providers).toEqual(['claude']);
+
+      const messages = await handle.db
+        .select({ role: schema.chatMessages.role, content: schema.chatMessages.content })
+        .from(schema.chatMessages)
+        .where(eq(schema.chatMessages.chatId, chatId))
+        .orderBy(schema.chatMessages.role);
+      expect(messages).toContainEqual({ role: 'claude', content: 'Hello there' });
+      expect(messages).toContainEqual({ role: 'user', content: 'test task' });
     });
   });
 });
