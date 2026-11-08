@@ -60,7 +60,7 @@ function StatusLine({ kind, text }: { kind: 'stopped' | 'failed'; text: string }
 function MessageRow({ message }: { message: ChatMessage }) {
   const color = roleColor(message.role);
   const kind = statusKind(message.content);
-  const text = kind ? message.content.replace(/^[⏹⚠️]+\s*/u, '') : message.content;
+  const text = kind ? message.content.replace(/^(?:⏹|⚠️)+\s*/u, '') : message.content;
 
   return (
     <div className="flex gap-3 px-4 py-3 sm:px-6">
@@ -255,7 +255,7 @@ export default function ChatPage(): React.JSX.Element | null {
     return (
       <>
         <Nav current="/chat" />
-        <main className="mx-auto flex max-w-2xl flex-col items-center gap-3 px-6 py-12 text-center">
+        <main className="mx-auto flex max-w-2xl flex-col items-center gap-3 px-6 py-12 text-center md:ml-60">
           <p className="text-sm text-red-600 dark:text-red-400">
             Could not load this chat — it may not exist, or belong to someone else.
           </p>
@@ -271,7 +271,7 @@ export default function ChatPage(): React.JSX.Element | null {
     return (
       <>
         <Nav current="/chat" />
-        <main className="p-6 text-sm text-neutral-500">Loading…</main>
+        <main className="p-6 text-sm text-neutral-500 md:ml-60">Loading…</main>
       </>
     );
   }
@@ -279,7 +279,7 @@ export default function ChatPage(): React.JSX.Element | null {
   return (
     <>
       <Nav current="/chat" />
-      <main className="flex h-[calc(100vh-49px)] flex-col bg-white dark:bg-neutral-950">
+      <main className="flex h-[calc(100vh-57px)] flex-col bg-white md:ml-60 md:h-screen dark:bg-neutral-950">
         <header className="border-b border-neutral-200 dark:border-neutral-800">
           <div className="mx-auto flex max-w-3xl items-center gap-2 px-4 py-3 sm:px-6">
             {chat.providers.map((provider, index) => {

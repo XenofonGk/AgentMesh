@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { parseSkillMarkdown } from '@agentmesh/skills/parser';
 import Nav from '../../components/Nav';
+import { AlertIcon, PlusCircleIcon, SkillIcon } from '../../components/icons';
 import { listSkills, me, saveSkill, type SkillSummary } from '../../lib/api';
 
 const DEFAULT_CONTENT = `---
@@ -113,7 +114,7 @@ export default function SkillsPage(): React.JSX.Element | null {
   return (
     <>
       <Nav current="/skills" />
-      <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
+      <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10 md:ml-60 md:py-14">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Skills</h1>
           <p className="mt-2 text-neutral-600 dark:text-neutral-400">
@@ -123,16 +124,20 @@ export default function SkillsPage(): React.JSX.Element | null {
 
       {listError && <p className="text-sm text-red-600 dark:text-red-400">{listError}</p>}
 
-      {skills && (
-        <ul className="flex flex-col gap-2">
-          {skills.length === 0 && (
-            <li className="text-sm text-neutral-500">No skills yet.</li>
-          )}
+      {skills && skills.length === 0 && (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-300 py-16 text-center dark:border-neutral-700">
+          <SkillIcon className="size-6 text-neutral-400" />
+          <p className="text-sm text-neutral-500">No skills yet — create one below.</p>
+        </div>
+      )}
+
+      {skills && skills.length > 0 && (
+        <ul className="flex flex-col divide-y divide-neutral-200 overflow-hidden rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
           {skills.map((skill) => (
             <li key={skill.name}>
               <a
                 href={`/skills/${encodeURIComponent(skill.name)}`}
-                className="flex items-center justify-between rounded-md border border-neutral-200 px-3 py-2 text-sm hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                className="flex items-center justify-between px-4 py-3 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-900"
               >
                 <span>
                   <span className="font-medium">{skill.name}</span>
@@ -141,7 +146,8 @@ export default function SkillsPage(): React.JSX.Element | null {
                   )}
                 </span>
                 {!skill.valid && (
-                  <span className="text-xs font-medium text-red-600 dark:text-red-400">
+                  <span className="flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400">
+                    <AlertIcon className="size-3.5" />
                     invalid
                   </span>
                 )}
@@ -157,8 +163,9 @@ export default function SkillsPage(): React.JSX.Element | null {
           onClick={() => {
             setShowCreate(true);
           }}
-          className="self-start rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-neutral-900"
+          className="flex w-fit items-center gap-2 rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 dark:bg-white dark:text-neutral-900"
         >
+          <PlusCircleIcon className="size-4" />
           New skill
         </button>
       ) : (

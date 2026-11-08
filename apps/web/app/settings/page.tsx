@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Nav from '../../components/Nav';
+import { CheckIcon, KeyIcon } from '../../components/icons';
 import {
   deleteCredential,
   listCredentials,
@@ -96,8 +97,17 @@ function ProviderCard({
   }
 
   return (
-    <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
-      <div className="flex items-start justify-between">
+    <div className="rounded-lg border border-neutral-200 p-4 transition-colors hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700">
+      <div className="flex items-start gap-3">
+        <div
+          className={`flex size-9 shrink-0 items-center justify-center rounded-full ${
+            isConfigured
+              ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400'
+              : 'bg-neutral-100 text-neutral-400 dark:bg-neutral-900 dark:text-neutral-600'
+          }`}
+        >
+          <KeyIcon className="size-4" />
+        </div>
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-medium">{provider.label}</h3>
@@ -107,7 +117,8 @@ function ProviderCard({
               </span>
             )}
             {isConfigured && (
-              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+              <span className="flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900 dark:text-blue-300">
+                <CheckIcon className="size-3" />
                 Connected
               </span>
             )}
@@ -223,7 +234,7 @@ export default function SettingsPage(): React.JSX.Element | null {
   return (
     <>
       <Nav current="/settings" />
-      <main className="mx-auto max-w-2xl px-6 py-12">
+      <main className="mx-auto max-w-2xl px-6 py-10 md:ml-60 md:py-14">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm text-neutral-500">

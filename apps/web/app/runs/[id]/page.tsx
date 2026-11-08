@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { AgentEvent, Usage } from '@agentmesh/core';
 import Nav from '../../../components/Nav';
+import { AlertIcon, ChatBubblesIcon, StopIcon } from '../../../components/icons';
 import {
   cancelAttempt,
+  continueAttempt,
   getRun,
   me,
   reviewFileEdit,
@@ -155,6 +157,8 @@ function AttemptPanel({
   );
   const [reviewPending, setReviewPending] = useState<Record<string, boolean>>({});
   const [cancelling, setCancelling] = useState(false);
+  const [continuing, setContinuing] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     const source = subscribeToAttempt(attemptId);
@@ -186,6 +190,19 @@ function AttemptPanel({
     // just stops offering the button twice while that's in flight.
   }
 
+  async function handleContinue(): Promise<void> {
+    setContinuing(true);
+    try {
+      const result = await continueAttempt(attemptId);
+      if (result) {
+        router.push(`/chat/${result.chatId}`);
+        return;
+      }
+    } finally {
+      setContinuing(false);
+    }
+  }
+
   async function handleReview(
     eventId: string,
     status: Extract<ReviewStatus, 'approved' | 'rejected'>,
@@ -207,7 +224,20 @@ function AttemptPanel({
         <span className="font-medium">{provider}</span>
         <span className="flex items-center gap-2 text-xs text-neutral-500">
           {done ? (
-            done.outcome
+            <>
+              {done.outcome}
+              {done.outcome === 'succeeded' && (
+                <button
+                  type="button"
+                  disabled={continuing}
+                  onClick={() => void handleContinue()}
+                  className="flex items-center gap-1 rounded border border-neutral-300 px-1.5 py-0.5 text-neutral-600 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                >
+                  <ChatBubblesIcon className="size-3" />
+                  {continuing ? 'Opening…' : 'Continue'}
+                </button>
+              )}
+            </>
           ) : cancelling ? (
             'stopping…'
           ) : (
@@ -216,8 +246,9 @@ function AttemptPanel({
               <button
                 type="button"
                 onClick={() => void handleCancel()}
-                className="rounded border border-neutral-300 px-1.5 py-0.5 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                className="flex items-center gap-1 rounded border border-neutral-300 px-1.5 py-0.5 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
               >
+                <StopIcon className="size-3" />
                 Stop
               </button>
             </>
@@ -299,6 +330,17 @@ function AttemptPanel({
                 </div>
                 <DiffView diff={block.diff} />
               </div>
+            );
+          }
+          if (block.kind === 'error') {
+            return (
+              <p
+                key={index}
+                className="mb-3 flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400"
+              >
+                <AlertIcon className="mt-0.5 size-3.5 shrink-0" />
+                {block.detail}
+              </p>
             );
           }
           return (
@@ -441,7 +483,7 @@ export default function RunPage(): React.JSX.Element | null {
     return (
       <>
         <Nav current="/runs" />
-        <main className="mx-auto flex max-w-2xl flex-col items-center gap-3 px-6 py-12 text-center">
+        <main className="mx-auto flex max-w-2xl flex-col items-center gap-3 px-6 py-12 text-center md:ml-60">
           <p className="text-sm text-red-600 dark:text-red-400">
             Could not load this run — it may not exist, or belong to someone else.
           </p>
@@ -457,7 +499,7 @@ export default function RunPage(): React.JSX.Element | null {
     return (
       <>
         <Nav current="/runs" />
-        <main className="p-6">Loading…</main>
+        <main className="p-6 md:ml-60">Loading…</main>
       </>
     );
   }
@@ -465,7 +507,7 @@ export default function RunPage(): React.JSX.Element | null {
   return (
     <>
       <Nav current="/runs" />
-      <main className="flex h-[calc(100vh-49px)] flex-col gap-4 p-6">
+      <main className="flex h-[calc(100vh-57px)] flex-col gap-4 p-6 md:ml-60 md:h-screen">
         <div>
           <h1 className="text-lg font-semibold">{run.task}</h1>
           <p className="text-xs text-neutral-500">

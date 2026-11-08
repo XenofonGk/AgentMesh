@@ -112,6 +112,16 @@ export async function cancelAttempt(attemptId: string): Promise<boolean> {
   return response.ok;
 }
 
+/** Forks a finished Run attempt into a new single-provider Chat you can keep talking
+ *  to — see `continueAttemptAsChat` on the server for why this is a fork, not a second
+ *  continuation mechanism. `null` if the attempt isn't owned by you or isn't a
+ *  succeeded Run attempt (still running, failed, or already a Chat attempt). */
+export async function continueAttempt(attemptId: string): Promise<{ chatId: string } | null> {
+  const response = await apiFetch(`/attempts/${attemptId}/continue`, { method: 'POST' });
+  if (!response.ok) return null;
+  return (await response.json()) as { chatId: string };
+}
+
 /**
  * `EventSource` over `fetch` for this one case: it has a native reconnect-with-backoff
  * and a `withCredentials` flag that sends the session cookie cross-origin, which is

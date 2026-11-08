@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Nav from '../../components/Nav';
+import ProviderPicker from '../../components/ProviderPicker';
+import { ChatBubblesIcon, TrashIcon } from '../../components/icons';
 import {
   createChat,
   deleteChat,
@@ -14,7 +16,7 @@ import {
 
 /** Same participant list `/` offers for a bake-off run — see that page's comment on
  *  why these five and not more. */
-const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek', 'grok', 'ollama'];
+const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek', 'grok', 'chatgpt', 'ollama'];
 
 const PAGE_SIZE = 50;
 
@@ -122,40 +124,26 @@ export default function ChatListPage(): React.JSX.Element | null {
   return (
     <>
       <Nav current="/chat" />
-      <main className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-8">
+      <main className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-10 md:ml-60 md:py-14">
         <section>
           <h1 className="mb-1 text-2xl font-semibold tracking-tight">Group chat</h1>
-          <p className="mb-4 text-sm text-neutral-500">
+          <p className="mb-5 text-sm text-neutral-500">
             Pick providers, in the order you want them to take turns. Each one sees the
             whole conversation, including what the others just said, before it replies —
             and you can keep sending follow-ups.
           </p>
 
-          <fieldset className="mb-4 flex flex-col gap-2 text-sm">
-            {AVAILABLE_PROVIDERS.map((provider) => {
-              const configured = configuredProviders?.has(provider) ?? true;
-              return (
-                <label key={provider} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={providers.includes(provider)}
-                    onChange={() => {
-                      toggleProvider(provider);
-                    }}
-                  />
-                  {provider}
-                  {configuredProviders !== null && !configured && (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-300">
-                      No API key —{' '}
-                      <a href="/settings" className="underline">
-                        add one
-                      </a>
-                    </span>
-                  )}
-                </label>
-              );
-            })}
-          </fieldset>
+          <div className="mb-5 flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+              Providers
+            </span>
+            <ProviderPicker
+              providers={AVAILABLE_PROVIDERS}
+              selected={providers}
+              configured={configuredProviders}
+              onToggle={toggleProvider}
+            />
+          </div>
 
           {createError && (
             <p className="mb-2 text-sm text-red-600 dark:text-red-400">{createError}</p>
@@ -165,7 +153,7 @@ export default function ChatListPage(): React.JSX.Element | null {
             type="button"
             disabled={creating}
             onClick={() => void handleCreate()}
-            className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+            className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 dark:bg-white dark:text-neutral-900"
           >
             {creating ? 'Starting…' : 'Start chat'}
           </button>
@@ -178,16 +166,19 @@ export default function ChatListPage(): React.JSX.Element | null {
             <p className="text-sm text-neutral-500">Loading…</p>
           )}
           {!listError && chatList !== null && chatList.length === 0 && (
-            <p className="text-sm text-neutral-500">No chats yet.</p>
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-300 py-16 text-center dark:border-neutral-700">
+              <ChatBubblesIcon className="size-6 text-neutral-400" />
+              <p className="text-sm text-neutral-500">No chats yet — start one above.</p>
+            </div>
           )}
           {!listError && chatList !== null && chatList.length > 0 && (
             <>
-              <ul className="flex flex-col divide-y divide-neutral-200 dark:divide-neutral-800">
+              <ul className="flex flex-col divide-y divide-neutral-200 overflow-hidden rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
                 {chatList.map((chat) => (
-                  <li key={chat.id} className="flex items-center justify-between gap-4 py-3">
+                  <li key={chat.id} className="flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-900">
                     <a
                       href={`/chat/${chat.id}`}
-                      className="flex min-w-0 flex-1 items-center justify-between gap-4 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                      className="flex min-w-0 flex-1 items-center justify-between gap-4 px-4 py-3"
                     >
                       <span className="text-sm">{chat.providers.join(' → ')}</span>
                       <span className="shrink-0 text-xs text-neutral-400">
@@ -195,30 +186,30 @@ export default function ChatListPage(): React.JSX.Element | null {
                       </span>
                     </a>
                     {confirmingId === chat.id ? (
-                      <span className="flex shrink-0 items-center gap-2 text-xs">
-                        Delete?
+                      <span className="flex shrink-0 items-center gap-2 pr-4 text-xs">
                         <button
                           type="button"
                           onClick={() => void handleDelete(chat.id)}
-                          className="text-red-600 underline dark:text-red-400"
+                          className="rounded border border-red-300 px-2 py-1 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
                         >
-                          Yes
+                          Delete
                         </button>
                         <button
                           type="button"
                           onClick={() => setConfirmingId(null)}
-                          className="text-neutral-500 underline"
+                          className="rounded border border-neutral-300 px-2 py-1 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800"
                         >
-                          No
+                          Cancel
                         </button>
                       </span>
                     ) : (
                       <button
                         type="button"
                         onClick={() => setConfirmingId(chat.id)}
-                        className="shrink-0 text-xs text-neutral-400 hover:text-red-600 dark:hover:text-red-400"
+                        aria-label="Delete chat"
+                        className="mr-4 shrink-0 rounded p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
                       >
-                        Delete
+                        <TrashIcon className="size-4" />
                       </button>
                     )}
                   </li>

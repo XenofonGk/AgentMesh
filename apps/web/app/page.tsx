@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Nav from '../components/Nav';
+import ProviderPicker from '../components/ProviderPicker';
 import { listCredentials, me, startRun } from '../lib/api';
 
 /**
@@ -13,7 +14,7 @@ import { listCredentials, me, startRun } from '../lib/api';
  * selecting it needs no stored credential at all, only a reachable `OLLAMA_URL` on the
  * proxy (see `apps/proxy/src/providers.ts`).
  */
-const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek', 'grok', 'ollama'];
+const AVAILABLE_PROVIDERS = ['claude', 'gemini', 'deepseek', 'grok', 'chatgpt', 'ollama'];
 
 export default function HomePage(): React.JSX.Element | null {
   const router = useRouter();
@@ -93,68 +94,64 @@ export default function HomePage(): React.JSX.Element | null {
   return (
     <>
       <Nav current="/" />
-      <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-12">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">AgentMesh</h1>
-        <p className="mt-2 text-neutral-600 dark:text-neutral-400">
-          Describe a task and watch an agent work on it, live.
-        </p>
-      </div>
+      <main className="mx-auto flex max-w-2xl flex-col gap-8 px-6 py-10 md:py-14 md:ml-60">
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">New run</h1>
+          <p className="mt-2 text-neutral-600 dark:text-neutral-400">
+            Describe a task, pick one or more providers, and compare how each one
+            handles it — side by side, live.
+          </p>
+        </div>
 
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={(event) => void handleSubmit(event)}
-      >
-        <label className="flex flex-col gap-1 text-sm">
-          Task
-          <textarea
-            className="min-h-32 rounded-md border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
-            required
-            value={task}
-            onChange={(event) => {
-              setTask(event.target.value);
-            }}
-            placeholder="e.g. Add input validation to the signup form"
-          />
-        </label>
-
-        <fieldset className="flex flex-col gap-2 text-sm">
-          <legend className="mb-1">Providers</legend>
-          {AVAILABLE_PROVIDERS.map((provider) => {
-            const configured = configuredProviders?.has(provider) ?? true;
-            return (
-              <label key={provider} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={providers.includes(provider)}
-                  onChange={() => {
-                    toggleProvider(provider);
-                  }}
-                />
-                {provider}
-                {configuredProviders !== null && !configured && (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-300">
-                    No API key —{' '}
-                    <a href="/settings" className="underline">
-                      add one
-                    </a>
-                  </span>
-                )}
-              </label>
-            );
-          })}
-        </fieldset>
-
-        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+        <form
+          className="flex flex-col gap-6"
+          onSubmit={(event) => void handleSubmit(event)}
         >
-          {submitting ? 'Starting…' : 'Start run'}
-        </button>
-      </form>
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="font-medium text-neutral-700 dark:text-neutral-300">Task</span>
+            <textarea
+              className="min-h-32 rounded-lg border border-neutral-300 px-3 py-2.5 placeholder:text-neutral-400 focus-visible:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:placeholder:text-neutral-600"
+              required
+              value={task}
+              onChange={(event) => {
+                setTask(event.target.value);
+              }}
+              placeholder="e.g. Add input validation to the signup form"
+            />
+          </label>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+              Providers
+            </span>
+            <ProviderPicker
+              providers={AVAILABLE_PROVIDERS}
+              selected={providers}
+              configured={configuredProviders}
+              onToggle={toggleProvider}
+            />
+            {configuredProviders !== null &&
+              AVAILABLE_PROVIDERS.some((p) => !configuredProviders.has(p)) && (
+                <p className="text-xs text-neutral-500">
+                  Providers marked "no key" need a credential first —{' '}
+                  <a href="/settings" className="underline">
+                    add one in Settings
+                  </a>
+                  .
+                </p>
+              )}
+          </div>
+
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="self-start rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+          >
+            {submitting ? 'Starting…' : 'Start run'}
+          </button>
+        </form>
       </main>
     </>
   );

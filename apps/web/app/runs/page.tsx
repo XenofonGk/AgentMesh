@@ -3,18 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Nav from '../../components/Nav';
+import { HistoryIcon, TrashIcon } from '../../components/icons';
 import { deleteRun, listRuns, me, type RunSummary } from '../../lib/api';
 
 const PAGE_SIZE = 50;
 
-function statusColor(status: string): string {
+function statusBadge(status: string): string {
   switch (status) {
     case 'succeeded':
-      return 'text-green-700 dark:text-green-400';
+      return 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-400';
     case 'failed':
-      return 'text-red-700 dark:text-red-400';
+      return 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-400';
     default:
-      return 'text-neutral-500';
+      return 'bg-neutral-100 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400';
   }
 }
 
@@ -93,8 +94,8 @@ export default function RunsPage(): React.JSX.Element | null {
   return (
     <>
       <Nav current="/runs" />
-      <main className="mx-auto max-w-3xl px-6 py-8">
-        <h1 className="mb-4 text-2xl font-semibold tracking-tight">Runs</h1>
+      <main className="mx-auto max-w-3xl px-6 py-10 md:ml-60 md:py-14">
+        <h1 className="mb-6 text-2xl font-semibold tracking-tight">Runs</h1>
 
         {loadError && (
           <div className="flex items-center gap-3 text-sm text-red-600 dark:text-red-400">
@@ -110,57 +111,61 @@ export default function RunsPage(): React.JSX.Element | null {
         )}
 
         {!loadError && runs !== null && runs.length === 0 && (
-          <p className="text-sm text-neutral-500">
-            No runs yet.{' '}
-            <a href="/" className="underline">
-              Start one
-            </a>
-            .
-          </p>
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-neutral-300 py-16 text-center dark:border-neutral-700">
+            <HistoryIcon className="size-6 text-neutral-400" />
+            <p className="text-sm text-neutral-500">
+              No runs yet.{' '}
+              <a href="/" className="font-medium text-neutral-700 underline dark:text-neutral-300">
+                Start one
+              </a>
+            </p>
+          </div>
         )}
 
         {!loadError && runs !== null && runs.length > 0 && (
           <>
-            <ul className="flex flex-col divide-y divide-neutral-200 dark:divide-neutral-800">
+            <ul className="flex flex-col divide-y divide-neutral-200 overflow-hidden rounded-lg border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
               {runs.map((run) => (
-                <li key={run.id} className="flex items-center justify-between gap-4 py-3">
+                <li key={run.id} className="flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-900">
                   <a
                     href={`/runs/${run.id}`}
-                    className="flex min-w-0 flex-1 items-center justify-between gap-4 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                    className="flex min-w-0 flex-1 items-center justify-between gap-4 px-4 py-3"
                   >
                     <span className="truncate text-sm">{run.task}</span>
                     <span className="flex shrink-0 items-center gap-3 text-xs">
-                      <span className={statusColor(run.status)}>{run.status}</span>
+                      <span className={`rounded-full px-2 py-0.5 font-medium ${statusBadge(run.status)}`}>
+                        {run.status}
+                      </span>
                       <span className="text-neutral-400">
                         {new Date(run.createdAt).toLocaleString()}
                       </span>
                     </span>
                   </a>
                   {confirmingId === run.id ? (
-                    <span className="flex shrink-0 items-center gap-2 text-xs">
-                      Delete?
+                    <span className="flex shrink-0 items-center gap-2 pr-4 text-xs">
                       <button
                         type="button"
                         onClick={() => void handleDelete(run.id)}
-                        className="text-red-600 underline dark:text-red-400"
+                        className="rounded border border-red-300 px-2 py-1 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
                       >
-                        Yes
+                        Delete
                       </button>
                       <button
                         type="button"
                         onClick={() => setConfirmingId(null)}
-                        className="text-neutral-500 underline"
+                        className="rounded border border-neutral-300 px-2 py-1 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800"
                       >
-                        No
+                        Cancel
                       </button>
                     </span>
                   ) : (
                     <button
                       type="button"
                       onClick={() => setConfirmingId(run.id)}
-                      className="shrink-0 text-xs text-neutral-400 hover:text-red-600 dark:hover:text-red-400"
+                      aria-label="Delete run"
+                      className="mr-4 shrink-0 rounded p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:text-red-400"
                     >
-                      Delete
+                      <TrashIcon className="size-4" />
                     </button>
                   )}
                 </li>

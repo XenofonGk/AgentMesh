@@ -82,16 +82,16 @@ function VersionHistory({ name }: { name: string }): React.JSX.Element {
               className="flex flex-col gap-1 rounded-md border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700"
             >
               <div className="flex items-center justify-between gap-2">
-                <span>
-                  v{v.version} —{' '}
+                <span className="flex items-center gap-2">
+                  v{v.version}
                   <span
-                    className={
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                       v.status === 'active'
-                        ? 'text-green-700 dark:text-green-400'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-400'
                         : v.status === 'rejected'
-                          ? 'text-neutral-500'
-                          : 'text-amber-600 dark:text-amber-400'
-                    }
+                          ? 'bg-neutral-100 text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400'
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400'
+                    }`}
                   >
                     {v.status}
                   </span>
@@ -260,7 +260,7 @@ export default function EditSkillPage(): React.JSX.Element | null {
     return (
       <>
         <Nav current="/skills" />
-        <main className="p-6">Loading…</main>
+        <main className="p-6 md:ml-60">Loading…</main>
       </>
     );
   }
@@ -268,7 +268,7 @@ export default function EditSkillPage(): React.JSX.Element | null {
   return (
     <>
       <Nav current="/skills" />
-      <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10">
+      <main className="mx-auto flex max-w-2xl flex-col gap-6 px-6 py-10 md:ml-60 md:py-14">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-semibold tracking-tight">{params.name}</h1>
         <a href="/skills" className="text-sm text-neutral-500 hover:underline">
